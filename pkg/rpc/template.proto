@@ -20,6 +20,19 @@ message HealthzResponse {
     string version = 1;
 }
 
+message ListAgentsRequest {}
+
+message ListAgentsResponse {
+    repeated AgentInfo agents = 1;
+}
+
+message AgentInfo {
+    string agent_name = 1;
+    int32 hub_port = 2;
+    bool online = 3;
+}
+
 service TemplateService {
     rpc Healthz(HealthzRequest) returns (ApiResponse);
+    rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
 }

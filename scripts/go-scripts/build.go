@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"context"
 	"fmt"
 	"io"
@@ -26,7 +25,7 @@ func build() {
 	buildFrontend(ctx)
 
 	// 创建输出目录
-	dirs := []string{"./data/cli", "./data/rpc", "./data/fc-event", "./data/fc-web"}
+	dirs := []string{"./data/dashboard"}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Ctx(ctx).Error().Err(err).Str("dir", dir).Msg("failed to create directory")
@@ -48,10 +47,7 @@ func build() {
 		path string
 		out  string
 	}{
-		{"cli", "./cmd/cli", "./data/cli/cli"},
-		{"rpc", "./cmd/rpc", "./data/rpc/rpc"},
-		{"fc-event", "./cmd/fc-event", "./data/fc-event/fc-event"},
-		{"fc-web", "./cmd/fc-web", "./data/fc-web/fc-web"},
+		{"dashboard", "./cmd/dashboard", "./data/dashboard/dashboard"},
 	}
 
 	// 并行构建
@@ -95,62 +91,12 @@ func build() {
 			}
 
 			log.Ctx(ctx).Info().Str("output", build.out).Msg("built successfully")
-
-			// 为 fc-event 和 fc-web 创建 zip 文件
-			if build.name == "fc-event" || build.name == "fc-web" {
-				zipPath := "../../data/" + build.name + "/" + build.name + ".zip"
-				sourcePath := "../../data/" + build.name + "/" + build.name
-				if err := createFcZip(ctx, build.name, sourcePath, zipPath); err != nil {
-					log.Ctx(ctx).Panic().Err(err).Str("name", build.name).Msg("failed to create zip")
-					return
-				}
-				log.Ctx(ctx).Info().Str("zip", zipPath).Str("name", build.name).Msg("created zip")
-			}
 		}(build)
 	}
 
 	wg.Wait()
 
 	log.Ctx(ctx).Info().Msg("all builds completed")
-}
-
-func createFcZip(ctx context.Context, name, sourceFile, zipPath string) error {
-	// 创建 zip 文件
-	zipFile, err := os.Create(zipPath)
-	if err != nil {
-		return fmt.Errorf("failed to create zip file: %w", err)
-	}
-	defer zipFile.Close()
-
-	// 创建 zip writer
-	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
-
-	// 打开源文件
-	source, err := os.Open(sourceFile)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
-	}
-	defer source.Close()
-
-	// 在 zip 中创建文件，文件名就是程序名（根目录），并设置执行权限
-	header := &zip.FileHeader{
-		Name:   name,
-		Method: zip.Deflate,
-	}
-	header.SetMode(0755) // 设置执行权限 (rwxr-xr-x)
-	zipEntry, err := zipWriter.CreateHeader(header)
-	if err != nil {
-		return fmt.Errorf("failed to create zip entry: %w", err)
-	}
-
-	// 复制文件内容
-	_, err = io.Copy(zipEntry, source)
-	if err != nil {
-		return fmt.Errorf("failed to copy file to zip: %w", err)
-	}
-
-	return nil
 }
 
 func buildFrontend(ctx context.Context) {
@@ -180,26 +126,26 @@ func buildFrontend(ctx context.Context) {
 	}
 	log.Ctx(ctx).Info().Msg("frontend built")
 
-	// Copy dist to cmd/rpc/dist
+	// Copy dist to cmd/dashboard/dist
 	srcDir := "../../fe/dist"
-	dstDir := "../../cmd/rpc/dist"
+	dstDir := "../../cmd/dashboard/dist"
 
 	// Remove existing dist directory
 	os.RemoveAll(dstDir)
 
 	// Create destination directory
 	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		log.Ctx(ctx).Error().Err(err).Msg("failed to create rpc dist directory")
+		log.Ctx(ctx).Error().Err(err).Msg("failed to create dashboard dist directory")
 		os.Exit(1)
 	}
 
 	// Copy files
 	err := copyDir(srcDir, dstDir)
 	if err != nil {
-		log.Ctx(ctx).Error().Err(err).Msg("failed to copy frontend dist to rpc")
+		log.Ctx(ctx).Error().Err(err).Msg("failed to copy frontend dist to dashboard")
 		os.Exit(1)
 	}
-	log.Ctx(ctx).Info().Str("dst", dstDir).Msg("frontend dist copied to rpc")
+	log.Ctx(ctx).Info().Str("dst", dstDir).Msg("frontend dist copied to dashboard")
 }
 
 func copyDir(src, dst string) error {

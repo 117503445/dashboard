@@ -15,31 +15,9 @@ tasks:
       - ./scripts/go-scripts/**
       - ./scripts/tasks/**
     generates:
-      - ./data/cli/cli
-      - ./data/rpc/rpc
-      - ./data/fc-event/fc-event.zip
-      - ./data/fc-event/fc-event
-      - ./data/fc-web/fc-web.zip
-      - ./data/fc-web/fc-web
+      - ./data/dashboard/dashboard
     cmds:
       - cd ./scripts/go-scripts && go run . build
-
-  release:
-    desc: "为多个平台构建发布版本"
-    deps: [":base:clear"]
-    sources:
-      - ./cmd/cli/**
-      - ./internal/**
-      - ./pkg/**
-      - ./.git/**
-      - ./go.mod
-      - ./go.sum
-      - ./scripts/go-scripts/**
-      - ./scripts/tasks/**
-    generates:
-      - ./data/release/cli-*
-    cmds:
-      - cd ./scripts/go-scripts && go run . release
 
   docker:
     desc: "构建 Docker 镜像"

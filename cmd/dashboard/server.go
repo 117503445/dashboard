@@ -12,16 +12,23 @@ import (
 	"github.com/117503445/dashboard/pkg/rpc/rpcconnect"
 )
 
-func ListenAndServe(ctx context.Context, port string) error {
+func ListenAndServe(ctx context.Context, port string, config Config) error {
 	mux := http.NewServeMux()
-	server := NewServer()
+	server := NewServer(config)
 
 	interceptors := connect.WithInterceptors(
 		NewCtxInterceptor(),
 	)
 
+	// RPC handler - must be registered before static files
 	path, handler := rpcconnect.NewTemplateServiceHandler(server, interceptors)
 	mux.Handle(path, handler)
+
+	// Proxy handler for agent ports
+	mux.Handle("/proxy/agents/", http.HandlerFunc(server.ProxyHandler))
+
+	// Static files handler (catch-all for SPA)
+	mux.Handle("/", staticHandler())
 
 	// Enable CORS for all origins
 	c := cors.New(cors.Options{
@@ -42,7 +49,8 @@ func ListenAndServe(ctx context.Context, port string) error {
 		}
 	}()
 
-	// log.Ctx(ctx).Info().Msgf("listening on %s", listener.Addr().String())
+	log.Ctx(ctx).Info().Msgf("listening on %s", listener.Addr().String())
+	log.Ctx(ctx).Info().Msgf("sshole-hub URL: %s", config.HubURL)
 	if err := http.Serve(listener, c.Handler(mux)); err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("failed to serve")
 		return err

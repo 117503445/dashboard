@@ -35,11 +35,15 @@ const (
 const (
 	// TemplateServiceHealthzProcedure is the fully-qualified name of the TemplateService's Healthz RPC.
 	TemplateServiceHealthzProcedure = "/pkg.rpc.TemplateService/Healthz"
+	// TemplateServiceListAgentsProcedure is the fully-qualified name of the TemplateService's
+	// ListAgents RPC.
+	TemplateServiceListAgentsProcedure = "/pkg.rpc.TemplateService/ListAgents"
 )
 
 // TemplateServiceClient is a client for the pkg.rpc.TemplateService service.
 type TemplateServiceClient interface {
 	Healthz(context.Context, *connect.Request[rpc.HealthzRequest]) (*connect.Response[rpc.ApiResponse], error)
+	ListAgents(context.Context, *connect.Request[rpc.ListAgentsRequest]) (*connect.Response[rpc.ListAgentsResponse], error)
 }
 
 // NewTemplateServiceClient constructs a client for the pkg.rpc.TemplateService service. By default,
@@ -59,12 +63,19 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("Healthz")),
 			connect.WithClientOptions(opts...),
 		),
+		listAgents: connect.NewClient[rpc.ListAgentsRequest, rpc.ListAgentsResponse](
+			httpClient,
+			baseURL+TemplateServiceListAgentsProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("ListAgents")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // templateServiceClient implements TemplateServiceClient.
 type templateServiceClient struct {
-	healthz *connect.Client[rpc.HealthzRequest, rpc.ApiResponse]
+	healthz    *connect.Client[rpc.HealthzRequest, rpc.ApiResponse]
+	listAgents *connect.Client[rpc.ListAgentsRequest, rpc.ListAgentsResponse]
 }
 
 // Healthz calls pkg.rpc.TemplateService.Healthz.
@@ -72,9 +83,15 @@ func (c *templateServiceClient) Healthz(ctx context.Context, req *connect.Reques
 	return c.healthz.CallUnary(ctx, req)
 }
 
+// ListAgents calls pkg.rpc.TemplateService.ListAgents.
+func (c *templateServiceClient) ListAgents(ctx context.Context, req *connect.Request[rpc.ListAgentsRequest]) (*connect.Response[rpc.ListAgentsResponse], error) {
+	return c.listAgents.CallUnary(ctx, req)
+}
+
 // TemplateServiceHandler is an implementation of the pkg.rpc.TemplateService service.
 type TemplateServiceHandler interface {
 	Healthz(context.Context, *connect.Request[rpc.HealthzRequest]) (*connect.Response[rpc.ApiResponse], error)
+	ListAgents(context.Context, *connect.Request[rpc.ListAgentsRequest]) (*connect.Response[rpc.ListAgentsResponse], error)
 }
 
 // NewTemplateServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -90,10 +107,18 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("Healthz")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templateServiceListAgentsHandler := connect.NewUnaryHandler(
+		TemplateServiceListAgentsProcedure,
+		svc.ListAgents,
+		connect.WithSchema(templateServiceMethods.ByName("ListAgents")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/pkg.rpc.TemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplateServiceHealthzProcedure:
 			templateServiceHealthzHandler.ServeHTTP(w, r)
+		case TemplateServiceListAgentsProcedure:
+			templateServiceListAgentsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -105,4 +130,8 @@ type UnimplementedTemplateServiceHandler struct{}
 
 func (UnimplementedTemplateServiceHandler) Healthz(context.Context, *connect.Request[rpc.HealthzRequest]) (*connect.Response[rpc.ApiResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pkg.rpc.TemplateService.Healthz is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) ListAgents(context.Context, *connect.Request[rpc.ListAgentsRequest]) (*connect.Response[rpc.ListAgentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pkg.rpc.TemplateService.ListAgents is not implemented"))
 }

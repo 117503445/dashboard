@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file pkg/rpc/template.proto.
  */
 export const file_pkg_rpc_template: GenFile = /*@__PURE__*/
-  fileDesc("ChZwa2cvcnBjL3RlbXBsYXRlLnByb3RvEgdwa2cucnBjImQKC0FwaVJlc3BvbnNlEgwKBGNvZGUYASABKAMSDwoHbWVzc2FnZRgCIAEoCRIrCgdoZWFsdGh6GAMgASgLMhgucGtnLnJwYy5IZWFsdGh6UmVzcG9uc2VIAEIJCgdwYXlsb2FkIhAKDkhlYWx0aHpSZXF1ZXN0IiIKD0hlYWx0aHpSZXNwb25zZRIPCgd2ZXJzaW9uGAEgASgJMksKD1RlbXBsYXRlU2VydmljZRI4CgdIZWFsdGh6EhcucGtnLnJwYy5IZWFsdGh6UmVxdWVzdBoULnBrZy5ycGMuQXBpUmVzcG9uc2VCLFoqZ2l0aHViLmNvbS8xMTc1MDM0NDUvZGFzaGJvYXJkL3BrZy9ycGM7cnBjYgZwcm90bzM");
+  fileDesc("ChZwa2cvcnBjL3RlbXBsYXRlLnByb3RvEgdwa2cucnBjImQKC0FwaVJlc3BvbnNlEgwKBGNvZGUYASABKAMSDwoHbWVzc2FnZRgCIAEoCRIrCgdoZWFsdGh6GAMgASgLMhgucGtnLnJwYy5IZWFsdGh6UmVzcG9uc2VIAEIJCgdwYXlsb2FkIhAKDkhlYWx0aHpSZXF1ZXN0IiIKD0hlYWx0aHpSZXNwb25zZRIPCgd2ZXJzaW9uGAEgASgJIhMKEUxpc3RBZ2VudHNSZXF1ZXN0IjgKEkxpc3RBZ2VudHNSZXNwb25zZRIiCgZhZ2VudHMYASADKAsyEi5wa2cucnBjLkFnZW50SW5mbyJBCglBZ2VudEluZm8SEgoKYWdlbnRfbmFtZRgBIAEoCRIQCghodWJfcG9ydBgCIAEoBRIOCgZvbmxpbmUYAyABKAgykgEKD1RlbXBsYXRlU2VydmljZRI4CgdIZWFsdGh6EhcucGtnLnJwYy5IZWFsdGh6UmVxdWVzdBoULnBrZy5ycGMuQXBpUmVzcG9uc2USRQoKTGlzdEFnZW50cxIaLnBrZy5ycGMuTGlzdEFnZW50c1JlcXVlc3QaGy5wa2cucnBjLkxpc3RBZ2VudHNSZXNwb25zZUIsWipnaXRodWIuY29tLzExNzUwMzQ0NS9kYXNoYm9hcmQvcGtnL3JwYztycGNiBnByb3RvMw");
 
 /**
  * @generated from message pkg.rpc.ApiResponse
@@ -78,6 +78,63 @@ export const HealthzResponseSchema: GenMessage<HealthzResponse> = /*@__PURE__*/
   messageDesc(file_pkg_rpc_template, 2);
 
 /**
+ * @generated from message pkg.rpc.ListAgentsRequest
+ */
+export type ListAgentsRequest = Message<"pkg.rpc.ListAgentsRequest"> & {
+};
+
+/**
+ * Describes the message pkg.rpc.ListAgentsRequest.
+ * Use `create(ListAgentsRequestSchema)` to create a new message.
+ */
+export const ListAgentsRequestSchema: GenMessage<ListAgentsRequest> = /*@__PURE__*/
+  messageDesc(file_pkg_rpc_template, 3);
+
+/**
+ * @generated from message pkg.rpc.ListAgentsResponse
+ */
+export type ListAgentsResponse = Message<"pkg.rpc.ListAgentsResponse"> & {
+  /**
+   * @generated from field: repeated pkg.rpc.AgentInfo agents = 1;
+   */
+  agents: AgentInfo[];
+};
+
+/**
+ * Describes the message pkg.rpc.ListAgentsResponse.
+ * Use `create(ListAgentsResponseSchema)` to create a new message.
+ */
+export const ListAgentsResponseSchema: GenMessage<ListAgentsResponse> = /*@__PURE__*/
+  messageDesc(file_pkg_rpc_template, 4);
+
+/**
+ * @generated from message pkg.rpc.AgentInfo
+ */
+export type AgentInfo = Message<"pkg.rpc.AgentInfo"> & {
+  /**
+   * @generated from field: string agent_name = 1;
+   */
+  agentName: string;
+
+  /**
+   * @generated from field: int32 hub_port = 2;
+   */
+  hubPort: number;
+
+  /**
+   * @generated from field: bool online = 3;
+   */
+  online: boolean;
+};
+
+/**
+ * Describes the message pkg.rpc.AgentInfo.
+ * Use `create(AgentInfoSchema)` to create a new message.
+ */
+export const AgentInfoSchema: GenMessage<AgentInfo> = /*@__PURE__*/
+  messageDesc(file_pkg_rpc_template, 5);
+
+/**
  * @generated from service pkg.rpc.TemplateService
  */
 export const TemplateService: GenService<{
@@ -88,6 +145,14 @@ export const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof HealthzRequestSchema;
     output: typeof ApiResponseSchema;
+  },
+  /**
+   * @generated from rpc pkg.rpc.TemplateService.ListAgents
+   */
+  listAgents: {
+    methodKind: "unary";
+    input: typeof ListAgentsRequestSchema;
+    output: typeof ListAgentsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_pkg_rpc_template, 0);

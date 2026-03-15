@@ -1,16 +1,18 @@
 package main
 
-import (
-	"context"
-
-	"github.com/aliyun/fc-runtime-go-sdk/fccontext"
-)
+import "context"
 
 type ctxKey struct{}
 
 type AppContext struct {
 	RequestID string
-	FcCtx     *fccontext.FcContext
+}
+
+// Config holds application configuration
+type Config struct {
+	HubURL     string
+	HubToken   string
+	MockAgents string // If set, use mock agents data (format: "agent1:port1:true,agent2:port2:false")
 }
 
 // WithContext 注入 appContext

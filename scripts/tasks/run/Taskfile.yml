@@ -1,25 +1,19 @@
 version: 3
 
 tasks:
-  cli-run:
-    desc: "运行 CLI 程序"
+  dashboard-run:
+    desc: "运行 Dashboard 服务"
     deps: [":base:clear", ":build:bin"]
     cmds:
-      - ./data/cli/cli test
-
-  rpc-run:
-    desc: "运行 RPC 服务"
-    deps: [":base:clear", ":build:bin"]
-    cmds:
-      - pkill -f "./data/rpc/rpc" || true
+      - pkill -f "./data/dashboard/dashboard" || true
       - sleep 1
-      - ./data/rpc/rpc
+      - ./data/dashboard/dashboard
 
-  rpc-background:
-    desc: "在后台运行 RPC 服务"
+  dashboard-background:
+    desc: "在后台运行 Dashboard 服务"
     deps: [":base:clear", ":build:bin"]
     cmds:
-      - pkill -f "./data/rpc/rpc" || true
+      - pkill -f "./data/dashboard/dashboard" || true
       - sleep 1
-      - ./data/rpc/rpc &
+      - ./data/dashboard/dashboard &
       - sleep 2

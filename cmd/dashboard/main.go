@@ -35,6 +35,17 @@ func main() {
 		port = "8080"
 	}
 
+	// Read sshole-hub configuration
+	hubURL := os.Getenv("DASHBOARD_SSHOLE_HUB_URL")
+	hubToken := os.Getenv("DASHBOARD_SSHOLE_HUB_TOKEN")
+	mockAgents := os.Getenv("DASHBOARD_MOCK_AGENTS")
+
+	config := Config{
+		HubURL:     hubURL,
+		HubToken:   hubToken,
+		MockAgents: mockAgents,
+	}
+
 	ctx := context.Background()
 	ctx = log.Logger.WithContext(ctx)
 
@@ -51,7 +62,7 @@ func main() {
 			Msg("healthz response")
 	}()
 
-	if err := ListenAndServe(ctx, port); err != nil {
+	if err := ListenAndServe(ctx, port, config); err != nil {
 		log.Panic().Err(err).Msg("failed to serve")
 	}
 }

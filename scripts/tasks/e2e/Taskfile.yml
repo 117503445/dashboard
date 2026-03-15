@@ -3,7 +3,6 @@ version: 3
 tasks:
   run:
     desc: "运行所有 E2E 测试"
-    deps: [":run:rpc-background"]
     dir: ./scripts/e2e
     cmds:
       - uv run main.py

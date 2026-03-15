@@ -1,130 +1,59 @@
-import { useEffect, useState } from 'react'
-import { rpcClient } from '@/lib/rpc'
-import { Activity, Server, GitBranch, CheckCircle, XCircle, Loader2 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-
-interface HealthzData {
-  version: string
-  status: 'loading' | 'success' | 'error'
-  error?: string
-}
+import { useState } from 'react'
+import { Activity, Server } from 'lucide-react'
+import { AgentList } from '@/components/AgentList'
+import type { AgentInfo } from '@/components/AgentList'
+import { AgentPanel } from '@/components/AgentPanel'
 
 function App() {
-  const [healthz, setHealthz] = useState<HealthzData>({
-    version: '',
-    status: 'loading',
-  })
-
-  useEffect(() => {
-    const fetchHealthz = async () => {
-      try {
-        const response = await rpcClient.healthz({})
-        if (response.code === 0n && response.payload.case === 'healthz') {
-          setHealthz({
-            version: response.payload.value.version || 'unknown',
-            status: 'success',
-          })
-        } else {
-          setHealthz({
-            version: '',
-            status: 'error',
-            error: response.message || 'Unknown error',
-          })
-        }
-      } catch (err) {
-        setHealthz({
-          version: '',
-          status: 'error',
-          error: err instanceof Error ? err.message : 'Connection failed',
-        })
-      }
-    }
-
-    fetchHealthz()
-    const interval = setInterval(fetchHealthz, 5000)
-    return () => clearInterval(interval)
-  }, [])
+  const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null)
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-500 shadow-lg shadow-primary-500/25 mb-4">
-            <Activity className="w-8 h-8 text-white" />
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 shadow-lg shadow-primary-500/25">
+            <Activity className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-accent-600 bg-clip-text text-transparent">
-            Service Status
-          </h1>
-          <p className="text-slate-500">Real-time backend health monitoring</p>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
+            <p className="text-sm text-slate-500">Linux Agent Manager</p>
+          </div>
         </div>
+      </header>
 
-        {/* Status Card */}
-        <Card className="overflow-hidden">
-          <div className="h-1 bg-gradient-to-r from-primary-500 via-accent-500 to-primary-500 animate-pulse" />
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Server className="w-5 h-5 text-primary-500" />
-              Backend Service
-            </CardTitle>
-            <CardDescription>
-              Connect RPC Template Service
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Status Indicator */}
-            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
-              <span className="text-sm text-slate-600">Status</span>
-              <div className="flex items-center gap-2">
-                {healthz.status === 'loading' && (
-                  <>
-                    <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
-                    <span className="text-sm font-medium text-amber-600">Checking...</span>
-                  </>
-                )}
-                {healthz.status === 'success' && (
-                  <>
-                    <CheckCircle className="w-4 h-4 text-emerald-500" />
-                    <span className="text-sm font-medium text-emerald-600">Healthy</span>
-                  </>
-                )}
-                {healthz.status === 'error' && (
-                  <>
-                    <XCircle className="w-4 h-4 text-red-500" />
-                    <span className="text-sm font-medium text-red-600">Error</span>
-                  </>
-                )}
+      {/* Main content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar - Agent List */}
+        <aside className="w-72 bg-white border-r border-slate-200 flex flex-col">
+          <div className="p-4 border-b border-slate-200">
+            <div className="flex items-center gap-2 text-slate-700">
+              <Server className="w-5 h-5" />
+              <h2 className="font-semibold">Agents</h2>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <AgentList
+              selectedAgent={selectedAgent}
+              onSelectAgent={setSelectedAgent}
+            />
+          </div>
+        </aside>
+
+        {/* Main panel */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {selectedAgent ? (
+            <AgentPanel agent={selectedAgent} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-slate-50">
+              <div className="text-center text-slate-500">
+                <Server className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">Select an Agent</p>
+                <p className="text-sm mt-1">Choose an agent from the list to manage</p>
               </div>
             </div>
-
-            {/* Version Info */}
-            {healthz.status === 'success' && (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <GitBranch className="w-4 h-4" />
-                  Version
-                </div>
-                <code className="px-2 py-0.5 rounded bg-primary-100 text-primary-700 text-sm font-mono">
-                  {healthz.version}
-                </code>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {healthz.status === 'error' && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-100">
-                <p className="text-sm text-red-600 font-mono break-all">
-                  {healthz.error}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <p className="text-center text-xs text-slate-400">
-          Powered by Connect RPC + React
-        </p>
+          )}
+        </main>
       </div>
     </div>
   )
