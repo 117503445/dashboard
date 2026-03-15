@@ -1,0 +1,22 @@
+version: 3
+
+tasks:
+  run:
+    desc: "运行所有 E2E 测试"
+    deps: [":run:rpc-background"]
+    dir: ./scripts/e2e
+    cmds:
+      - uv run main.py
+
+  case:
+    desc: "运行指定的 E2E 测试用例"
+    dir: ./scripts/e2e
+    cmds:
+      - uv run main.py --case {{.CLI_ARGS}}
+
+  install:
+    desc: "安装 E2E 测试依赖和 Playwright 浏览器"
+    dir: ./scripts/e2e
+    cmds:
+      - uv sync
+      - uv run playwright install chromium

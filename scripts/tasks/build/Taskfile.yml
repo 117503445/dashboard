@@ -1,0 +1,48 @@
+version: 3
+
+tasks:
+  bin:
+    desc: "构建二进制文件"
+    deps: [":base:clear"]
+    sources:
+      - ./cmd/**
+      - ./internal/**
+      - ./pkg/**
+      - ./.git/**
+      - ./go.mod
+      - ./go.sum
+      - ./Taskfile.yml
+      - ./scripts/go-scripts/**
+      - ./scripts/tasks/**
+    generates:
+      - ./data/cli/cli
+      - ./data/rpc/rpc
+      - ./data/fc-event/fc-event.zip
+      - ./data/fc-event/fc-event
+      - ./data/fc-web/fc-web.zip
+      - ./data/fc-web/fc-web
+    cmds:
+      - cd ./scripts/go-scripts && go run . build
+
+  release:
+    desc: "为多个平台构建发布版本"
+    deps: [":base:clear"]
+    sources:
+      - ./cmd/cli/**
+      - ./internal/**
+      - ./pkg/**
+      - ./.git/**
+      - ./go.mod
+      - ./go.sum
+      - ./scripts/go-scripts/**
+      - ./scripts/tasks/**
+    generates:
+      - ./data/release/cli-*
+    cmds:
+      - cd ./scripts/go-scripts && go run . release
+
+  docker:
+    desc: "构建 Docker 镜像"
+    deps: [":base:clear", ":build:bin"]
+    cmds:
+      - cd ./scripts/go-scripts && go run . build-docker {{.CLI_ARGS}}

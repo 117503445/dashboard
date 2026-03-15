@@ -1,0 +1,15 @@
+version: 3
+
+tasks:
+  clear:
+    internal: true
+    silent: true
+    run: once
+    cmds:
+      - clear || true
+
+  default:
+    desc: "默认任务"
+    deps: ["clear"]
+    cmds:
+      - task: run:cli-run

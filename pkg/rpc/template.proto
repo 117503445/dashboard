@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package pkg.rpc;
+
+option go_package = "github.com/117503445/dashboard/pkg/rpc;rpc";
+
+message ApiResponse {
+    int64 code = 1;
+    string message = 2;
+  
+    // 根据 RPC 类型填充对应 payload
+    oneof payload {
+        HealthzResponse healthz = 3;
+    }
+}
+
+message HealthzRequest {}
+
+message HealthzResponse {
+    string version = 1;
+}
+
+service TemplateService {
+    rpc Healthz(HealthzRequest) returns (ApiResponse);
+}

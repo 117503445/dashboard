@@ -1,0 +1,63 @@
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  master:
+    runs-on: ubuntu-latest
+    container:
+      image: 117503445/dev:sha-29e400a
+      env:
+        GOPROXY: direct
+      options: --privileged --user root
+    steps:
+      # - name: Free Disk Space (Ubuntu)
+      #   uses: jlumbroso/free-disk-space@main
+      #   with:
+      #     # this might remove tools that are actually needed,
+      #     # if set to "true" but frees about 6 GB
+      #     tool-cache: true
+          
+      #     # all of these default to true, but feel free to set to
+      #     # "false" if necessary for your workflow
+      #     android: true
+      #     dotnet: true
+      #     haskell: true
+      #     large-packages: true
+      #     docker-images: true
+      #     swap-storage: true
+
+      - name: ci
+        run: |
+          su - root
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git /workspace
+          cd /workspace
+          git checkout ${{ github.sha }}
+
+          docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }} && docker login -u ${{ secrets.ALI_REGISTRY_USERNAME }} -p ${{ secrets.ALI_REGISTRY_PASSWORD }} registry.cn-hangzhou.aliyuncs.com
+          go-task build:docker -- --push
+
+          go-task build:release
+
+          # Get git commit
+          sha_short=$(git rev-parse --short HEAD)
+
+          wget https://github.com/cli/cli/releases/download/v2.83.2/gh_2.83.2_linux_amd64.tar.gz && tar -xzf gh_2.83.2_linux_amd64.tar.gz && mv gh_2.83.2_linux_amd64/bin/gh /usr/local/bin/
+
+          # Create release
+          gh release create ${sha_short} \
+            --title "Release ${sha_short}" \
+            --generate-notes
+
+          # Upload release assets
+          for file in data/release/*; do
+            if [ -f "$file" ]; then
+              gh release upload ${sha_short} "$file" --clobber
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

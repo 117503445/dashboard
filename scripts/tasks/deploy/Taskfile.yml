@@ -1,0 +1,15 @@
+version: 3
+
+tasks:
+  deploy-fc:
+    desc: "部署函数计算"
+    deps: [":base:clear", ":build:bin"]
+    cmds:
+      - cd ./scripts/go-scripts && go run . deploy-fc
+
+  invoke-fc-event:
+    desc: "调用函数计算事件"
+    # deps: [":base:clear", "deploy-fc"]
+    deps: [":base:clear"]
+    cmds:
+      - cd ./scripts/go-scripts && go run . invoke-fc --function-name fc-event

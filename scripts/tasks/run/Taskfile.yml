@@ -1,0 +1,25 @@
+version: 3
+
+tasks:
+  cli-run:
+    desc: "运行 CLI 程序"
+    deps: [":base:clear", ":build:bin"]
+    cmds:
+      - ./data/cli/cli test
+
+  rpc-run:
+    desc: "运行 RPC 服务"
+    deps: [":base:clear", ":build:bin"]
+    cmds:
+      - pkill -f "./data/rpc/rpc" || true
+      - sleep 1
+      - ./data/rpc/rpc
+
+  rpc-background:
+    desc: "在后台运行 RPC 服务"
+    deps: [":base:clear", ":build:bin"]
+    cmds:
+      - pkill -f "./data/rpc/rpc" || true
+      - sleep 1
+      - ./data/rpc/rpc &
+      - sleep 2

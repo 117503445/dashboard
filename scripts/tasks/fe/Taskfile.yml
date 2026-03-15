@@ -1,0 +1,28 @@
+version: 3
+
+tasks:
+  install:
+    desc: "安装前端依赖"
+    dir: ./fe
+    cmds:
+      - pnpm install
+
+  build:
+    desc: "构建前端"
+    dir: ./fe
+    cmds:
+      - pnpm build
+
+  dev:
+    desc: "启动前端开发服务器"
+    dir: ./fe
+    cmds:
+      - pnpm dev
+
+  gen:
+    desc: "为前端生成 protobuf 代码"
+    deps: [":base:clear"]
+    env:
+      PATH: "{{.PATH}}:{{.PWD}}/fe/node_modules/.bin"
+    cmds:
+      - buf generate

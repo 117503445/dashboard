@@ -1,0 +1,9 @@
+version: 3
+
+tasks:
+  gen-rpc:
+    desc: "生成 RPC 代码"
+    deps: [":base:clear"]
+    run: once
+    cmds:
+      - buf generate
