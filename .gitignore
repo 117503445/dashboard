@@ -6,3 +6,4 @@ p.md
 doc
 .pnpm-storecompose.override.yaml
 .pnpm-store
+compose.override.yaml
