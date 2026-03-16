@@ -4,3 +4,5 @@ data
 p.md
 *.pyc
 doc
+.pnpm-storecompose.override.yaml
+.pnpm-store

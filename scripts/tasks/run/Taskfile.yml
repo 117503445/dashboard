@@ -1,19 +1,53 @@
 version: 3
 
 tasks:
-  dashboard-run:
-    desc: "运行 Dashboard 服务"
-    deps: [":base:clear", ":build:bin"]
+  sshole-build:
+    desc: "编译 sshole 二进制文件到 ./data/bin"
+    vars:
+      SSHOLE_COMMIT: "a22aae18e6cc4248c0ebe77b13d75bd2b0e9767d"
+      SSHOLE_REPO: "https://github.com/117503445/sshole"
     cmds:
-      - pkill -f "./data/dashboard/dashboard" || true
-      - sleep 1
-      - ./data/dashboard/dashboard
+      - |
+        if [ -f "./data/bin/sshole_hub" ] && [ -f "./data/bin/sshole_agent" ]; then
+          echo "sshole binaries already exist, skipping build"
+          exit 0
+        fi
+        echo "Building sshole from commit {{.SSHOLE_COMMIT}}..."
+        rm -rf /tmp/sshole-build
+        git clone {{.SSHOLE_REPO}} /tmp/sshole-build
+        cd /tmp/sshole-build
+        git checkout {{.SSHOLE_COMMIT}}
+        go-task build:bin
+        mkdir -p {{.PWD}}/data/bin
+        cp /tmp/sshole-build/data/hub/sshole_hub {{.PWD}}/data/bin/
+        cp /tmp/sshole-build/data/agent/sshole_agent {{.PWD}}/data/bin/
+        rm -rf /tmp/sshole-build
+        echo "sshole binaries built and copied to ./data/bin/"
 
-  dashboard-background:
-    desc: "在后台运行 Dashboard 服务"
-    deps: [":base:clear", ":build:bin"]
+  dev:
+    desc: "编译并启动完整开发环境 (前端 + 后端 + sshole hub + agent)"
+    deps: [":fe:build", ":build:bin", ":run:sshole-build"]
+    vars:
+      SSHOLE_AUTH_TOKEN: '{{default "test-token" .SSHOLE_AUTH_TOKEN}}'
+      SSHOLE_HUB_PORT: '{{default "9001" .SSHOLE_HUB_PORT}}'
+      SSHOLE_AGENT_NAME: '{{default "test-agent" .SSHOLE_AGENT_NAME}}'
+      LOG_DIR: '{{.PWD}}/data/runs/{{now | date "2006-01-02_15-04-05"}}'
     cmds:
+      # 创建日志目录
+      - mkdir -p {{.LOG_DIR}}
+      # 关闭之前的进程
+      - pkill -f "sshole_hub" || true
+      - pkill -f "sshole_agent" || true
       - pkill -f "./data/dashboard/dashboard" || true
       - sleep 1
-      - ./data/dashboard/dashboard &
+      # 后台启动 sshole hub
+      - ./data/bin/sshole_hub --auth-token "{{.SSHOLE_AUTH_TOKEN}}" --http-addr ":{{.SSHOLE_HUB_PORT}}" > {{.LOG_DIR}}/sshole_hub.log 2>&1 &
+      - sleep 1
+      # 后台启动 sshole agent
+      - ./data/bin/sshole_agent --hub-server "http://localhost:{{.SSHOLE_HUB_PORT}}" --auth "{{.SSHOLE_AUTH_TOKEN}}" --name "{{.SSHOLE_AGENT_NAME}}" > {{.LOG_DIR}}/sshole_agent.log 2>&1 &
+      - sleep 1
+      # 后台启动 dashboard
+      - DASHBOARD_SSHOLE_HUB_URL="http://localhost:{{.SSHOLE_HUB_PORT}}" DASHBOARD_SSHOLE_HUB_TOKEN="{{.SSHOLE_AUTH_TOKEN}}" ./data/dashboard/dashboard > {{.LOG_DIR}}/dashboard.log 2>&1 &
       - sleep 2
+      - echo "Dashboard running at http://localhost:8080"
+      - echo "Logs saved to {{.LOG_DIR}}"
