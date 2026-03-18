@@ -28,14 +28,14 @@ func main() {
 		Str("GitDirty", buildinfo.GitDirty).
 		Str("GitVersion", buildinfo.GitVersion).
 		Str("BuildDir", buildinfo.BuildDir).
-		Msg("build info")
+		Msg("构建信息")
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// Read sshole-hub configuration
+	// 读取 sshole-hub 配置
 	hubURL := os.Getenv("DASHBOARD_SSHOLE_HUB_URL")
 	hubToken := os.Getenv("DASHBOARD_SSHOLE_HUB_TOKEN")
 	mockAgents := os.Getenv("DASHBOARD_MOCK_AGENTS")
@@ -64,15 +64,15 @@ func main() {
 		client := rpcconnect.NewTemplateServiceClient(http.DefaultClient, "http://localhost:"+port)
 		resp, err := client.Healthz(context.Background(), connect.NewRequest(&rpc.HealthzRequest{}))
 		if err != nil {
-			log.Panic().Err(err).Msg("failed to call healthz")
+			log.Panic().Err(err).Msg("健康检查调用失败")
 		}
 		log.Info().
 			Interface("resp", resp).
 			Interface("header", resp.Header()).
-			Msg("healthz response")
+			Msg("健康检查响应")
 	}()
 
 	if err := ListenAndServe(ctx, port, config); err != nil {
-		log.Panic().Err(err).Msg("failed to serve")
+		log.Panic().Err(err).Msg("服务启动失败")
 	}
 }

@@ -30,6 +30,7 @@ type forwardKey struct {
 	RemotePort int
 }
 
+// ForwardInstance 表示一个端口转发实例，维护本地监听端口到远程 Agent 端口的映射
 type ForwardInstance struct {
 	LocalPort  int
 	RemotePort int
@@ -57,24 +58,24 @@ func (f *ForwardInstance) isIdle() bool {
 	return idle
 }
 
-// ForwardManager manages SSH connections over WebSocket tunnels and local port forwarding.
+// ForwardManager 管理通过 WebSocket 隧道建立的 SSH 连接和本地端口转发。
 //
-// Connection topology:
+// 连接拓扑:
 //
-//	Dashboard ──WS──▶ sshole-hub ──WS──▶ sshole-agent ──TCP──▶ Agent SSH server
+//	Dashboard ──WS──▶ sshole-hub ──WS──▶ sshole-agent ──TCP──▶ Agent SSH 服务
 //	                                                             │
-//	                                                    direct-tcpip channel
+//	                                                    direct-tcpip 通道
 //	                                                             │
 //	                                                             ▼
-//	                                                       Agent service port
+//	                                                       Agent 目标服务端口
 type ForwardManager struct {
 	mu       sync.RWMutex
 	forwards map[forwardKey]*ForwardInstance
-	sshConns map[string]*ssh.Client
+	sshConns map[string]*ssh.Client // 每个 Agent 一条 SSH 连接
 	portPool map[int]bool
 
 	sshConfig *ssh.ClientConfig
-	hubURL    string // HTTP URL of the hub (e.g. http://localhost:9002)
+	hubURL    string // Hub 的 HTTP 地址（如 http://localhost:9001）
 	hubToken  string
 
 	ctx    context.Context
@@ -103,6 +104,7 @@ func NewForwardManager(ctx context.Context, hubURL, hubToken string, sshConfig *
 	return fm
 }
 
+// tunnelWSURL 将 Hub 的 HTTP 地址转换为 WebSocket 隧道端点地址
 func (fm *ForwardManager) tunnelWSURL() string {
 	u, _ := url.Parse(fm.hubURL)
 	switch u.Scheme {
@@ -122,16 +124,15 @@ func (fm *ForwardManager) allocatePort() (int, error) {
 			return port, nil
 		}
 	}
-	return 0, fmt.Errorf("no available local ports in range %d-%d", localPortMin, localPortMax)
+	return 0, fmt.Errorf("本地端口池耗尽（范围 %d-%d）", localPortMin, localPortMax)
 }
 
 func (fm *ForwardManager) releasePort(port int) {
 	fm.portPool[port] = true
 }
 
-// getOrCreateSSHConn establishes an SSH connection to the agent via the hub's
-// WebSocket tunnel (entry-initiated flow). This avoids the hub's SSH-initiated
-// code path which has a double-startForwarding race condition.
+// getOrCreateSSHConn 通过 Hub 的 WebSocket 隧道（entry-initiated 流程）建立到 Agent 的 SSH 连接。
+// 使用此流程可绕过 Hub 中 SSH-initiated 路径存在的 startForwarding 双重调用竞态问题。
 func (fm *ForwardManager) getOrCreateSSHConn(agentName string, hubPort int32) (*ssh.Client, error) {
 	if conn, ok := fm.sshConns[agentName]; ok {
 		_, _, err := conn.SendRequest("keepalive@openssh.com", true, nil)
@@ -159,12 +160,12 @@ func (fm *ForwardManager) getOrCreateSSHConn(agentName string, hubPort int32) (*
 		HTTPHeader: header,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("dial tunnel WebSocket %s: %w", tunnelURL, err)
+		return nil, fmt.Errorf("连接隧道 WebSocket %s 失败: %w", tunnelURL, err)
 	}
 
 	if err := tunnel.SendHandshake(dialCtx, ws, sessionID); err != nil {
-		ws.Close(websocket.StatusInternalError, "handshake failed")
-		return nil, fmt.Errorf("tunnel handshake: %w", err)
+		ws.Close(websocket.StatusInternalError, "握手失败")
+		return nil, fmt.Errorf("隧道握手失败: %w", err)
 	}
 
 	netConn := tunnel.NetConn(fm.ctx, ws)
@@ -173,17 +174,17 @@ func (fm *ForwardManager) getOrCreateSSHConn(agentName string, hubPort int32) (*
 	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, fm.sshConfig)
 	if err != nil {
 		netConn.Close()
-		return nil, fmt.Errorf("SSH handshake over tunnel to %s: %w", agentName, err)
+		return nil, fmt.Errorf("通过隧道与 %s 进行 SSH 握手失败: %w", agentName, err)
 	}
 
 	client := ssh.NewClient(sshConn, chans, reqs)
 	fm.sshConns[agentName] = client
-	log.Info().Str("agent", agentName).Msg("SSH connection established via WebSocket tunnel")
+	log.Info().Str("agent", agentName).Msg("通过 WebSocket 隧道建立 SSH 连接成功")
 	return client, nil
 }
 
-// GetOrCreateForward returns the local port for forwarding to the given agent's remote port.
-// If a forward already exists, it is reused; otherwise a new SSH tunnel is established.
+// GetOrCreateForward 获取或创建到指定 Agent 远程端口的本地转发。
+// 已有转发时直接复用；否则建立新的 SSH 隧道。
 func (fm *ForwardManager) GetOrCreateForward(agentName string, remotePort int, hubPort int32) (int, error) {
 	key := forwardKey{AgentName: agentName, RemotePort: remotePort}
 
@@ -199,6 +200,7 @@ func (fm *ForwardManager) GetOrCreateForward(agentName string, remotePort int, h
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
+	// 获取写锁后再次检查，避免重复创建
 	if fwd, ok := fm.forwards[key]; ok {
 		fwd.touch()
 		return fwd.LocalPort, nil
@@ -217,7 +219,7 @@ func (fm *ForwardManager) GetOrCreateForward(agentName string, remotePort int, h
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", localPort))
 	if err != nil {
 		fm.releasePort(localPort)
-		return 0, fmt.Errorf("failed to listen on 127.0.0.1:%d: %w", localPort, err)
+		return 0, fmt.Errorf("监听 127.0.0.1:%d 失败: %w", localPort, err)
 	}
 
 	ctx, cancel := context.WithCancel(fm.ctx)
@@ -239,11 +241,12 @@ func (fm *ForwardManager) GetOrCreateForward(agentName string, remotePort int, h
 		Str("agent", agentName).
 		Int("remotePort", remotePort).
 		Int("localPort", localPort).
-		Msg("created port forward")
+		Msg("端口转发已创建")
 
 	return localPort, nil
 }
 
+// runForward 在后台接受本地连接并通过 SSH 隧道转发到远程 Agent
 func (fm *ForwardManager) runForward(ctx context.Context, fwd *ForwardInstance) {
 	defer fwd.listener.Close()
 
@@ -270,7 +273,7 @@ func (fm *ForwardManager) runForward(ctx context.Context, fwd *ForwardInstance) 
 				log.Error().Err(err).
 					Str("agent", fwd.AgentName).
 					Int("localPort", fwd.LocalPort).
-					Msg("accept failed")
+					Msg("接受连接失败")
 				continue
 			}
 		}
@@ -279,6 +282,7 @@ func (fm *ForwardManager) runForward(ctx context.Context, fwd *ForwardInstance) 
 	}
 }
 
+// handleConn 处理单个转发连接：本地连接 ↔ SSH 隧道 ↔ Agent 远程端口
 func (fm *ForwardManager) handleConn(_ context.Context, fwd *ForwardInstance, localConn net.Conn) {
 	defer localConn.Close()
 	fwd.touch()
@@ -289,7 +293,7 @@ func (fm *ForwardManager) handleConn(_ context.Context, fwd *ForwardInstance, lo
 		log.Error().Err(err).
 			Str("agent", fwd.AgentName).
 			Str("remoteAddr", remoteAddr).
-			Msg("SSH dial to remote port failed")
+			Msg("SSH 通道连接远程端口失败")
 		return
 	}
 	defer remoteConn.Close()
@@ -321,6 +325,7 @@ func (fm *ForwardManager) cleanupLoop() {
 	}
 }
 
+// cleanupIdle 清理空闲超时的转发实例和无转发引用的 SSH 连接
 func (fm *ForwardManager) cleanupIdle() {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
@@ -331,7 +336,7 @@ func (fm *ForwardManager) cleanupIdle() {
 				Str("agent", fwd.AgentName).
 				Int("remotePort", fwd.RemotePort).
 				Int("localPort", fwd.LocalPort).
-				Msg("closing idle forward")
+				Msg("关闭空闲转发")
 
 			fwd.cancel()
 			fm.releasePort(fwd.LocalPort)
@@ -347,11 +352,12 @@ func (fm *ForwardManager) cleanupIdle() {
 		if !agentsInUse[agent] {
 			conn.Close()
 			delete(fm.sshConns, agent)
-			log.Info().Str("agent", agent).Msg("closed idle SSH connection")
+			log.Info().Str("agent", agent).Msg("关闭空闲 SSH 连接")
 		}
 	}
 }
 
+// Close 关闭所有转发和 SSH 连接
 func (fm *ForwardManager) Close() {
 	fm.cancel()
 

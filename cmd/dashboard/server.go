@@ -21,11 +21,11 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 	if config.HubURL != "" {
 		sshConfig, err := buildSSHConfig(config)
 		if err != nil {
-			log.Ctx(ctx).Warn().Err(err).Msg("failed to build SSH config, SSH forwarding disabled")
+			log.Ctx(ctx).Warn().Err(err).Msg("SSH 配置构建失败，SSH 转发已禁用")
 		} else {
 			forwardManager = NewForwardManager(ctx, config.HubURL, config.HubToken, sshConfig)
 			defer forwardManager.Close()
-			log.Ctx(ctx).Info().Str("hubURL", config.HubURL).Str("sshUser", config.SSHUser).Msg("SSH forwarding enabled")
+			log.Ctx(ctx).Info().Str("hubURL", config.HubURL).Str("sshUser", config.SSHUser).Msg("SSH 转发已启用")
 		}
 	}
 
@@ -36,39 +36,38 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 		NewCtxInterceptor(),
 	)
 
-	// RPC handler - must be registered before static files
+	// RPC 处理器（需在静态文件之前注册）
 	path, handler := rpcconnect.NewTemplateServiceHandler(server, interceptors)
 	mux.Handle(path, handler)
 
-	// Proxy handler for agent ports
+	// 代理处理器
 	mux.Handle("/proxy/agents/", http.HandlerFunc(server.ProxyHandler))
 
-	// Static files handler (catch-all for SPA)
+	// 静态文件处理器（SPA 兜底路由）
 	mux.Handle("/", staticHandler())
 
-	// Enable CORS for all origins
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"*"},
-		MaxAge:         86400, // 1 day in seconds
+		MaxAge:         86400,
 	})
 
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		log.Ctx(ctx).Error().Err(err).Msg("failed to listen")
+		log.Ctx(ctx).Error().Err(err).Msg("监听端口失败")
 		return err
 	}
 	defer func() {
 		if err := listener.Close(); err != nil {
-			log.Ctx(ctx).Error().Err(err).Msg("failed to close listener")
+			log.Ctx(ctx).Error().Err(err).Msg("关闭监听器失败")
 		}
 	}()
 
-	log.Ctx(ctx).Info().Msgf("listening on %s", listener.Addr().String())
-	log.Ctx(ctx).Info().Msgf("sshole-hub URL: %s", config.HubURL)
+	log.Ctx(ctx).Info().Msgf("正在监听 %s", listener.Addr().String())
+	log.Ctx(ctx).Info().Msgf("sshole-hub 地址: %s", config.HubURL)
 	if err := http.Serve(listener, c.Handler(mux)); err != nil {
-		log.Ctx(ctx).Error().Err(err).Msg("failed to serve")
+		log.Ctx(ctx).Error().Err(err).Msg("HTTP 服务异常退出")
 		return err
 	}
 	return nil
@@ -80,11 +79,11 @@ func buildSSHConfig(config Config) (*ssh.ClientConfig, error) {
 	if config.SSHKeyPath != "" {
 		key, err := os.ReadFile(config.SSHKeyPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read SSH key %s: %w", config.SSHKeyPath, err)
+			return nil, fmt.Errorf("读取 SSH 密钥 %s 失败: %w", config.SSHKeyPath, err)
 		}
 		signer, err := ssh.ParsePrivateKey(key)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse SSH key: %w", err)
+			return nil, fmt.Errorf("解析 SSH 密钥失败: %w", err)
 		}
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	}
@@ -94,7 +93,7 @@ func buildSSHConfig(config Config) (*ssh.ClientConfig, error) {
 	}
 
 	if len(authMethods) == 0 {
-		return nil, fmt.Errorf("no SSH auth method configured (set DASHBOARD_SSH_PASSWORD or DASHBOARD_SSH_KEY_PATH)")
+		return nil, fmt.Errorf("未配置 SSH 认证方式（请设置 DASHBOARD_SSH_PASSWORD 或 DASHBOARD_SSH_KEY_PATH）")
 	}
 
 	return &ssh.ClientConfig{

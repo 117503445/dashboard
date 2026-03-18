@@ -49,7 +49,7 @@ func NewCtxInterceptor() connect.UnaryInterceptorFunc {
 				)).Level(zerolog.DebugLevel).With().Caller().Logger().WithContext(ctx)
 				log.Ctx(ctx).Debug().
 					Interface("req", req).
-					Msg("request received")
+					Msg("收到请求")
 			}
 			resp, err = next(ctx, req)
 			if err != nil {
@@ -60,7 +60,7 @@ func NewCtxInterceptor() connect.UnaryInterceptorFunc {
 			}
 			log.Ctx(ctx).Debug().
 				Interface("resp", resp).
-				Msg("request done")
+				Msg("请求完成")
 			return resp, err
 		}
 	}
@@ -76,7 +76,7 @@ type Server struct {
 }
 
 func (s *Server) Healthz(ctx context.Context, req *connect.Request[rpc.HealthzRequest]) (*connect.Response[rpc.ApiResponse], error) {
-	log.Ctx(ctx).Info().Msg("Healthz")
+	log.Ctx(ctx).Info().Msg("健康检查")
 	return &connect.Response[rpc.ApiResponse]{
 		Msg: &rpc.ApiResponse{
 			Code:    0,
@@ -91,32 +91,27 @@ func (s *Server) Healthz(ctx context.Context, req *connect.Request[rpc.HealthzRe
 }
 
 func (s *Server) ListAgents(ctx context.Context, req *connect.Request[rpc.ListAgentsRequest]) (*connect.Response[rpc.ListAgentsResponse], error) {
-	// Check if using mock agents
 	if s.config.MockAgents != "" {
 		return s.listMockAgents(ctx)
 	}
 
 	if s.config.HubURL == "" {
-		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sshole-hub URL not configured"))
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sshole-hub 地址未配置"))
 	}
 
-	// Create sshole-hub client
 	hubClient := rpcv1connect.NewHoleServiceClient(http.DefaultClient, s.config.HubURL)
 
-	// Create request with auth token
 	hubReq := connect.NewRequest(&rpcv1.ListAgentsRequest{})
 	if s.config.HubToken != "" {
 		hubReq.Header().Set("Authorization", "Bearer "+s.config.HubToken)
 	}
 
-	// Call sshole-hub ListAgents
 	resp, err := hubClient.ListAgents(ctx, hubReq)
 	if err != nil {
-		log.Ctx(ctx).Error().Err(err).Msg("failed to call sshole-hub ListAgents")
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to list agents: %w", err))
+		log.Ctx(ctx).Error().Err(err).Msg("调用 sshole-hub ListAgents 失败")
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("获取 Agent 列表失败: %w", err))
 	}
 
-	// Convert to our response format
 	agents := make([]*rpc.AgentInfo, len(resp.Msg.Agents))
 	for i, agent := range resp.Msg.Agents {
 		agents[i] = &rpc.AgentInfo{
@@ -133,12 +128,11 @@ func (s *Server) ListAgents(ctx context.Context, req *connect.Request[rpc.ListAg
 	}, nil
 }
 
-// listMockAgents returns mock agent data for testing
+// listMockAgents 返回模拟 Agent 数据，用于测试
 func (s *Server) listMockAgents(ctx context.Context) (*connect.Response[rpc.ListAgentsResponse], error) {
-	log.Ctx(ctx).Info().Msg("using mock agents")
+	log.Ctx(ctx).Info().Msg("使用模拟 Agent 数据")
 
-	// Parse mock agents from config
-	// Format: "agent1:port1:true,agent2:port2:false"
+	// 格式: "agent1:port1:true,agent2:port2:false"
 	agents := []*rpc.AgentInfo{}
 
 	parts := strings.Split(s.config.MockAgents, ",")
@@ -168,14 +162,13 @@ func (s *Server) listMockAgents(ctx context.Context) (*connect.Response[rpc.List
 	}, nil
 }
 
-// ProxyHandler handles proxy requests to agent ports.
-// URL format: /proxy/agents/{agentId}/ports/{port}/...
-// When ForwardManager is available, requests are tunneled through SSH port forwarding.
-// Otherwise, falls back to direct HTTP proxy via sshole-hub.
+// ProxyHandler 处理到 Agent 端口的代理请求
+// URL 格式: /proxy/agents/{agentId}/ports/{port}/...
+// 通过 ForwardManager 建立 SSH 隧道转发请求到 Agent
 func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/agents/"), "/")
 	if len(pathParts) < 3 || pathParts[1] != "ports" {
-		http.Error(w, "invalid proxy URL format, expected /proxy/agents/{agentId}/ports/{port}", http.StatusBadRequest)
+		http.Error(w, "URL 格式错误，应为 /proxy/agents/{agentId}/ports/{port}", http.StatusBadRequest)
 		return
 	}
 
@@ -183,13 +176,18 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	portStr := pathParts[2]
 	remotePort, err := strconv.Atoi(portStr)
 	if err != nil {
-		http.Error(w, "invalid port number", http.StatusBadRequest)
+		http.Error(w, "端口号无效", http.StatusBadRequest)
+		return
+	}
+
+	if s.forwardManager == nil {
+		http.Error(w, "SSH 转发未启用（请配置 DASHBOARD_SSH_PASSWORD 或 DASHBOARD_SSH_KEY_PATH）", http.StatusServiceUnavailable)
 		return
 	}
 
 	agents, err := s.getAgents(r.Context())
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get agents: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("获取 Agent 列表失败: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -197,7 +195,7 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	for _, agent := range agents {
 		if agent.AgentName == agentID {
 			if !agent.Online {
-				http.Error(w, "agent is offline", http.StatusServiceUnavailable)
+				http.Error(w, "Agent 离线", http.StatusServiceUnavailable)
 				return
 			}
 			hubPort = agent.HubPort
@@ -205,7 +203,7 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if hubPort == 0 {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		http.Error(w, "Agent 未找到", http.StatusNotFound)
 		return
 	}
 
@@ -215,18 +213,10 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	rawQuery := r.URL.RawQuery
 
-	if s.forwardManager != nil {
-		s.proxyViaSSH(w, r, agentID, remotePort, hubPort, remainingPath, rawQuery)
-	} else {
-		s.proxyViaDirect(w, r, hubPort, remainingPath, rawQuery)
-	}
-}
-
-func (s *Server) proxyViaSSH(w http.ResponseWriter, r *http.Request, agentID string, remotePort int, hubPort int32, remainingPath, rawQuery string) {
 	localPort, err := s.forwardManager.GetOrCreateForward(agentID, remotePort, hubPort)
 	if err != nil {
-		log.Error().Err(err).Str("agent", agentID).Int("port", remotePort).Msg("failed to create forward")
-		http.Error(w, fmt.Sprintf("failed to create forward: %v", err), http.StatusBadGateway)
+		log.Error().Err(err).Str("agent", agentID).Int("port", remotePort).Msg("创建转发失败")
+		http.Error(w, fmt.Sprintf("创建转发失败: %v", err), http.StatusBadGateway)
 		return
 	}
 
@@ -249,30 +239,9 @@ func (s *Server) proxyViaSSH(w http.ResponseWriter, r *http.Request, agentID str
 	proxy.ServeHTTP(w, r)
 }
 
-// proxyViaDirect proxies via sshole-hub's HTTP proxy endpoint (legacy fallback).
-func (s *Server) proxyViaDirect(w http.ResponseWriter, r *http.Request, hubPort int32, remainingPath, rawQuery string) {
-	target := &url.URL{
-		Scheme:   "http",
-		Host:     fmt.Sprintf("localhost:%d", hubPort),
-		Path:     r.URL.Path,
-		RawQuery: rawQuery,
-	}
-
-	proxy := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = target.Scheme
-			req.URL.Host = target.Host
-			req.URL.Path = target.Path
-			req.URL.RawQuery = target.RawQuery
-			req.Host = target.Host
-		},
-	}
-	proxy.ServeHTTP(w, r)
-}
-
 func (s *Server) getAgents(ctx context.Context) ([]*rpc.AgentInfo, error) {
 	if s.config.HubURL == "" {
-		return nil, fmt.Errorf("sshole-hub URL not configured")
+		return nil, fmt.Errorf("sshole-hub 地址未配置")
 	}
 
 	hubClient := rpcv1connect.NewHoleServiceClient(http.DefaultClient, s.config.HubURL)
@@ -297,5 +266,5 @@ func (s *Server) getAgents(ctx context.Context) ([]*rpc.AgentInfo, error) {
 	return agents, nil
 }
 
-// Compile-time assertion that Server implements TemplateServiceHandler
+// 编译期断言 Server 实现了 TemplateServiceHandler 接口
 var _ rpcconnect.TemplateServiceHandler = (*Server)(nil)
