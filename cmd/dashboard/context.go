@@ -13,6 +13,10 @@ type Config struct {
 	HubURL     string
 	HubToken   string
 	MockAgents string // If set, use mock agents data (format: "agent1:port1:true,agent2:port2:false")
+
+	SSHUser     string
+	SSHPassword string
+	SSHKeyPath  string
 }
 
 // WithContext 注入 appContext

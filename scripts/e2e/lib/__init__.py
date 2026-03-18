@@ -1,1 +1,1 @@
-"""E2E test utilities."""
+"""E2E 测试工具"""

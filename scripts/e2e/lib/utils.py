@@ -1,4 +1,4 @@
-"""Utility functions for E2E tests."""
+"""E2E 测试工具函数"""
 
 import logging
 from pathlib import Path
@@ -7,26 +7,26 @@ from playwright.sync_api import Page, BrowserContext, Browser
 
 
 def take_screenshot(page: Page, screenshots_dir: Path, name: str) -> Path:
-    """Take a screenshot and save it to the screenshots directory."""
+    """截图并保存到截图目录"""
     screenshot_path = screenshots_dir / f"{name}.png"
     page.screenshot(path=str(screenshot_path))
     return screenshot_path
 
 
 def save_trace(context: BrowserContext, output_dir: Path) -> Path:
-    """Save the Playwright trace to the output directory."""
+    """保存 Playwright 追踪到输出目录"""
     trace_path = output_dir / "trace.zip"
     context.tracing.stop(path=str(trace_path))
     return trace_path
 
 
 def setup_playwright_tracing(context: BrowserContext) -> None:
-    """Start Playwright tracing for the context."""
+    """为上下文启动 Playwright 追踪"""
     context.tracing.start(screenshots=True, snapshots=True, sources=True)
 
 
 class TestContext:
-    """Context manager for E2E tests with Playwright."""
+    """E2E 测试上下文管理器（使用 Playwright）"""
 
     def __init__(
         self,
@@ -59,23 +59,23 @@ class TestContext:
         return False
 
     def screenshot(self, name: str) -> Path:
-        """Take a screenshot with the given name."""
+        """使用指定名称截图"""
         if not self.page:
-            raise RuntimeError("Page not initialized")
-        self.logger.info(f"Taking screenshot: {name}")
+            raise RuntimeError("页面未初始化")
+        self.logger.info(f"截图: {name}")
         return take_screenshot(self.page, self.screenshots_dir, name)
 
     def goto(self, path: str = "/") -> None:
-        """Navigate to a path relative to base_url."""
+        """导航到 base_url 的相对路径"""
         if not self.page:
-            raise RuntimeError("Page not initialized")
+            raise RuntimeError("页面未初始化")
         url = self.base_url + path
-        self.logger.info(f"Navigating to: {url}")
+        self.logger.info(f"导航到: {url}")
         self.page.goto(url)
 
     def wait_for_selector(self, selector: str, timeout: int = 10000) -> None:
-        """Wait for a selector to appear."""
+        """等待选择器出现"""
         if not self.page:
-            raise RuntimeError("Page not initialized")
-        self.logger.info(f"Waiting for selector: {selector}")
+            raise RuntimeError("页面未初始化")
+        self.logger.info(f"等待选择器: {selector}")
         self.page.wait_for_selector(selector, timeout=timeout)

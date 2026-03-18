@@ -2,19 +2,35 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/rs/cors"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/117503445/dashboard/pkg/rpc/rpcconnect"
 )
 
 func ListenAndServe(ctx context.Context, port string, config Config) error {
+	var forwardManager *ForwardManager
+	if config.HubURL != "" {
+		sshConfig, err := buildSSHConfig(config)
+		if err != nil {
+			log.Ctx(ctx).Warn().Err(err).Msg("failed to build SSH config, SSH forwarding disabled")
+		} else {
+			forwardManager = NewForwardManager(ctx, config.HubURL, config.HubToken, sshConfig)
+			defer forwardManager.Close()
+			log.Ctx(ctx).Info().Str("hubURL", config.HubURL).Str("sshUser", config.SSHUser).Msg("SSH forwarding enabled")
+		}
+	}
+
 	mux := http.NewServeMux()
-	server := NewServer(config)
+	server := NewServer(config, forwardManager)
 
 	interceptors := connect.WithInterceptors(
 		NewCtxInterceptor(),
@@ -56,4 +72,35 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 		return err
 	}
 	return nil
+}
+
+func buildSSHConfig(config Config) (*ssh.ClientConfig, error) {
+	var authMethods []ssh.AuthMethod
+
+	if config.SSHKeyPath != "" {
+		key, err := os.ReadFile(config.SSHKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read SSH key %s: %w", config.SSHKeyPath, err)
+		}
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse SSH key: %w", err)
+		}
+		authMethods = append(authMethods, ssh.PublicKeys(signer))
+	}
+
+	if config.SSHPassword != "" {
+		authMethods = append(authMethods, ssh.Password(config.SSHPassword))
+	}
+
+	if len(authMethods) == 0 {
+		return nil, fmt.Errorf("no SSH auth method configured (set DASHBOARD_SSH_PASSWORD or DASHBOARD_SSH_KEY_PATH)")
+	}
+
+	return &ssh.ClientConfig{
+		User:            config.SSHUser,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}, nil
 }

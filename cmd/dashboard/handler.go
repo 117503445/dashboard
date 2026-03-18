@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -65,12 +66,13 @@ func NewCtxInterceptor() connect.UnaryInterceptorFunc {
 	}
 }
 
-func NewServer(config Config) *Server {
-	return &Server{config: config}
+func NewServer(config Config, forwardManager *ForwardManager) *Server {
+	return &Server{config: config, forwardManager: forwardManager}
 }
 
 type Server struct {
-	config Config
+	config         Config
+	forwardManager *ForwardManager
 }
 
 func (s *Server) Healthz(ctx context.Context, req *connect.Request[rpc.HealthzRequest]) (*connect.Response[rpc.ApiResponse], error) {
@@ -166,10 +168,11 @@ func (s *Server) listMockAgents(ctx context.Context) (*connect.Response[rpc.List
 	}, nil
 }
 
-// ProxyHandler handles proxy requests to agent ports
-// URL format: /proxy/agents/{agentId}/ports/{port}
+// ProxyHandler handles proxy requests to agent ports.
+// URL format: /proxy/agents/{agentId}/ports/{port}/...
+// When ForwardManager is available, requests are tunneled through SSH port forwarding.
+// Otherwise, falls back to direct HTTP proxy via sshole-hub.
 func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
-	// Parse URL: /proxy/agents/{agentId}/ports/{port}/...
 	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/agents/"), "/")
 	if len(pathParts) < 3 || pathParts[1] != "ports" {
 		http.Error(w, "invalid proxy URL format, expected /proxy/agents/{agentId}/ports/{port}", http.StatusBadRequest)
@@ -178,20 +181,18 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	agentID := pathParts[0]
 	portStr := pathParts[2]
-	_, err := strconv.Atoi(portStr)
+	remotePort, err := strconv.Atoi(portStr)
 	if err != nil {
 		http.Error(w, "invalid port number", http.StatusBadRequest)
 		return
 	}
 
-	// Get agent info from sshole-hub
 	agents, err := s.getAgents(r.Context())
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to get agents: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Find the agent
 	var hubPort int32
 	for _, agent := range agents {
 		if agent.AgentName == agentID {
@@ -208,47 +209,65 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build target URL
-	targetURL := fmt.Sprintf("http://localhost:%d%s", hubPort, r.URL.Path)
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
+	remainingPath := "/"
+	if len(pathParts) > 3 {
+		remainingPath = "/" + strings.Join(pathParts[3:], "/")
 	}
+	rawQuery := r.URL.RawQuery
 
-	// Create proxy request
-	targetReq, err := http.NewRequest(r.Method, targetURL, r.Body)
+	if s.forwardManager != nil {
+		s.proxyViaSSH(w, r, agentID, remotePort, hubPort, remainingPath, rawQuery)
+	} else {
+		s.proxyViaDirect(w, r, hubPort, remainingPath, rawQuery)
+	}
+}
+
+func (s *Server) proxyViaSSH(w http.ResponseWriter, r *http.Request, agentID string, remotePort int, hubPort int32, remainingPath, rawQuery string) {
+	localPort, err := s.forwardManager.GetOrCreateForward(agentID, remotePort, hubPort)
 	if err != nil {
-		http.Error(w, "failed to create proxy request", http.StatusInternalServerError)
+		log.Error().Err(err).Str("agent", agentID).Int("port", remotePort).Msg("failed to create forward")
+		http.Error(w, fmt.Sprintf("failed to create forward: %v", err), http.StatusBadGateway)
 		return
 	}
 
-	// Copy headers
-	for key, values := range r.Header {
-		for _, value := range values {
-			targetReq.Header.Add(key, value)
-		}
+	target := &url.URL{
+		Scheme:   "http",
+		Host:     fmt.Sprintf("127.0.0.1:%d", localPort),
+		Path:     remainingPath,
+		RawQuery: rawQuery,
 	}
 
-	// Send request
-	client := &http.Client{}
-	resp, err := client.Do(targetReq)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to proxy request: %v", err), http.StatusBadGateway)
-		return
+	proxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			req.URL.Scheme = target.Scheme
+			req.URL.Host = target.Host
+			req.URL.Path = target.Path
+			req.URL.RawQuery = target.RawQuery
+			req.Host = target.Host
+		},
 	}
-	defer resp.Body.Close()
+	proxy.ServeHTTP(w, r)
+}
 
-	// Copy response headers
-	for key, values := range resp.Header {
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
+// proxyViaDirect proxies via sshole-hub's HTTP proxy endpoint (legacy fallback).
+func (s *Server) proxyViaDirect(w http.ResponseWriter, r *http.Request, hubPort int32, remainingPath, rawQuery string) {
+	target := &url.URL{
+		Scheme:   "http",
+		Host:     fmt.Sprintf("localhost:%d", hubPort),
+		Path:     r.URL.Path,
+		RawQuery: rawQuery,
 	}
 
-	// Copy status code
-	w.WriteHeader(resp.StatusCode)
-
-	// Copy body
-	io.Copy(w, resp.Body)
+	proxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			req.URL.Scheme = target.Scheme
+			req.URL.Host = target.Host
+			req.URL.Path = target.Path
+			req.URL.RawQuery = target.RawQuery
+			req.Host = target.Host
+		},
+	}
+	proxy.ServeHTTP(w, r)
 }
 
 func (s *Server) getAgents(ctx context.Context) ([]*rpc.AgentInfo, error) {

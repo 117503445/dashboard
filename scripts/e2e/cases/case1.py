@@ -1,8 +1,7 @@
 """
-Test case 1: Basic Healthz Page Test
+测试用例 1: 基础健康检查页面测试
 
-This test verifies that the frontend loads correctly and displays
-the healthz status from the backend.
+验证前端正确加载并显示后端的健康检查状态。
 """
 
 import logging
@@ -18,7 +17,7 @@ from lib.utils import TestContext
 
 
 def wait_for_port(port: int, timeout: int = 30) -> bool:
-    """Wait for a port to be available."""
+    """等待端口可用（有进程监听）"""
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -40,10 +39,10 @@ def run_test(
     logs_dir: Path,
     logger: logging.Logger,
 ) -> bool:
-    """Run the healthz page test."""
-    logger.info("Starting case1: Healthz Page Test")
+    """运行健康检查页面测试"""
+    logger.info("开始测试用例 case1: 健康检查页面测试")
 
-    # Start dashboard backend
+    # 启动 Dashboard 后端
     project_root = Path(__file__).parent.parent.parent.parent
     backend_process = None
 
@@ -51,7 +50,7 @@ def run_test(
         env = os.environ.copy()
         env["PORT"] = "8080"
 
-        logger.info("Starting dashboard backend...")
+        logger.info("启动 Dashboard 后端...")
         backend_process = subprocess.Popen(
             ["go", "run", "./cmd/dashboard"],
             cwd=project_root,
@@ -60,15 +59,15 @@ def run_test(
             stderr=subprocess.STDOUT,
         )
 
-        # Wait for backend to start
+        # 等待后端启动
         if not wait_for_port(8080, timeout=30):
-            logger.error("Backend failed to start within 30 seconds")
-            # Log stdout/stderr
+            logger.error("后端在 30 秒内未能启动")
+            # 记录 stdout/stderr
             if backend_process.stdout:
-                logger.error(f"Backend output: {backend_process.stdout.read().decode()}")
+                logger.error(f"后端输出: {backend_process.stdout.read().decode()}")
             return False
 
-        logger.info("Dashboard backend started on port 8080")
+        logger.info("Dashboard 后端已在端口 8080 启动")
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -81,59 +80,59 @@ def run_test(
                     logs_dir=logs_dir,
                     logger=logger,
                 ) as ctx:
-                    # Step 1: Navigate to the page
+                    # 步骤 1: 导航到页面
                     ctx.goto("/")
                     ctx.screenshot("step1-initial-load")
 
-                    # Step 2: Wait for the page to load
+                    # 步骤 2: 等待页面加载
                     ctx.wait_for_selector("text=Dashboard")
                     ctx.screenshot("step2-dashboard-visible")
 
-                    # Step 3: Wait for agent list to load
+                    # 步骤 3: 等待 Agent 列表加载
                     time.sleep(2)
                     ctx.screenshot("step3-agent-list-loaded")
 
-                    # Step 4: Verify the page structure
+                    # 步骤 4: 验证页面结构
                     page = ctx.page
                     if not page:
                         return False
 
-                    # Check for Dashboard title
+                    # 检查 Dashboard 标题
                     title = page.locator("text=Dashboard")
                     if title.count() == 0:
-                        logger.error("Dashboard title not found")
+                        logger.error("未找到 Dashboard 标题")
                         return False
 
-                    # Check for Agents header
+                    # 检查 Agents 标题
                     agents_header = page.locator("text=Agents")
                     if agents_header.count() == 0:
-                        logger.error("Agents header not found")
+                        logger.error("未找到 Agents 标题")
                         return False
 
-                    # Check for "Select an Agent" prompt
+                    # 检查 "Select an Agent" 提示
                     select_prompt = page.locator("text=Select an Agent")
                     if select_prompt.count() == 0:
-                        logger.warning("Select an Agent prompt not found")
+                        logger.warning("未找到 Select an Agent 提示")
 
-                    logger.info("Page structure verified successfully")
+                    logger.info("页面结构验证成功")
                     ctx.screenshot("step4-verification-complete")
 
-                    logger.info("Test completed successfully")
+                    logger.info("测试成功完成")
                     return True
 
             except Exception as e:
-                logger.exception(f"Test failed with error: {e}")
+                logger.exception(f"测试失败: {e}")
                 return False
             finally:
                 browser.close()
 
     finally:
-        # Cleanup backend process
+        # 清理后端进程
         if backend_process:
-            logger.info("Stopping dashboard backend...")
+            logger.info("停止 Dashboard 后端...")
             backend_process.terminate()
             try:
                 backend_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 backend_process.kill()
-            logger.info("Dashboard backend stopped")
+            logger.info("Dashboard 后端已停止")

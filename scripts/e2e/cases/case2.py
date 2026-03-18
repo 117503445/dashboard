@@ -1,10 +1,10 @@
 """
-Test case 2: Agent List and Proxy Test
+测试用例 2: Agent 列表和代理测试
 
-This test verifies that:
-1. The agent list is displayed correctly
-2. Users can select an agent
-3. Users can add port tabs
+验证：
+1. Agent 列表正确显示
+2. 用户可以选择 Agent
+3. 用户可以添加端口标签页
 """
 
 import logging
@@ -22,7 +22,7 @@ from lib.utils import TestContext
 
 
 def wait_for_port(port: int, timeout: int = 30) -> bool:
-    """Wait for a port to be available."""
+    """等待端口可用（有进程监听）"""
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -39,14 +39,14 @@ def wait_for_port(port: int, timeout: int = 30) -> bool:
 
 
 class MockProxyHandler(BaseHTTPRequestHandler):
-    """Mock handler for proxy requests (simulates agent service)."""
+    """模拟代理请求处理器（模拟 Agent 服务）"""
 
     def log_message(self, format, *args):
-        """Suppress default logging."""
+        """禁用默认日志"""
         pass
 
     def do_GET(self):
-        """Handle GET requests."""
+        """处理 GET 请求"""
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -66,7 +66,7 @@ class MockProxyHandler(BaseHTTPRequestHandler):
 
 
 def run_mock_server(port: int, handler_class):
-    """Run a mock HTTP server in a thread."""
+    """在线程中运行模拟 HTTP 服务器"""
     server = HTTPServer(("localhost", port), handler_class)
     server.serve_forever()
 
@@ -77,41 +77,41 @@ def run_test(
     logs_dir: Path,
     logger: logging.Logger,
 ) -> bool:
-    """Run the agent list and proxy test."""
-    logger.info("Starting case2: Agent List and Proxy Test")
+    """运行 Agent 列表和代理测试"""
+    logger.info("开始测试用例 case2: Agent 列表和代理测试")
 
-    # Delay to ensure previous test cleanup is complete
+    # 等待确保之前测试的清理已完成
     time.sleep(2)
 
-    # Small delay to ensure previous test cleanup
+    # 短暂延迟确保之前测试清理完成
     time.sleep(1)
 
-    # Start mock agent proxy server
+    # 启动模拟 Agent 代理服务器
     mock_proxy_thread = threading.Thread(
         target=run_mock_server,
         args=(2222, MockProxyHandler),
         daemon=True,
     )
     mock_proxy_thread.start()
-    logger.info("Mock agent proxy server started on port 2222")
+    logger.info("模拟 Agent 代理服务器已在端口 2222 启动")
 
-    # Wait for mock server to start
+    # 等待模拟服务器启动
     if not wait_for_port(2222, timeout=10):
-        logger.error("Mock proxy server failed to start")
+        logger.error("模拟代理服务器未能启动")
         return False
 
-    # Start dashboard backend with mock agents
+    # 启动带有模拟 Agent 的 Dashboard 后端
     project_root = Path(__file__).parent.parent.parent.parent
     backend_process = None
 
     try:
         env = os.environ.copy()
-        # Use mock agents for testing
-        # Format: "agent-name:hub-port:online"
+        # 使用模拟 Agent 进行测试
+        # 格式: "agent-name:hub-port:online"
         env["DASHBOARD_MOCK_AGENTS"] = "agent-1:2222:true,agent-2:2223:false,agent-3:2224:true"
-        env["PORT"] = "8081"  # Use different port to avoid conflicts
+        env["PORT"] = "8081"  # 使用不同端口避免冲突
 
-        logger.info("Starting dashboard backend with mock agents...")
+        logger.info("启动带有模拟 Agent 的 Dashboard 后端...")
         logger.info(f"DASHBOARD_MOCK_AGENTS={env['DASHBOARD_MOCK_AGENTS']}")
         backend_process = subprocess.Popen(
             ["go", "run", "./cmd/dashboard"],
@@ -121,17 +121,17 @@ def run_test(
             stderr=subprocess.STDOUT,
         )
 
-        # Wait for backend to start
+        # 等待后端启动
         if not wait_for_port(8081, timeout=30):
-            logger.error("Backend failed to start within 30 seconds")
+            logger.error("后端在 30 秒内未能启动")
             if backend_process.stdout:
                 output = backend_process.stdout.read().decode()
-                logger.error(f"Backend output: {output}")
+                logger.error(f"后端输出: {output}")
             return False
 
-        logger.info("Dashboard backend started on port 8081")
+        logger.info("Dashboard 后端已在端口 8081 启动")
 
-        # Give the backend a moment to fully initialize
+        # 给后端一点时间完全初始化
         time.sleep(3)
 
         with sync_playwright() as p:
@@ -144,108 +144,108 @@ def run_test(
                     screenshots_dir=screenshots_dir,
                     logs_dir=logs_dir,
                     logger=logger,
-                    base_url="http://localhost:8081",  # Use different port
+                    base_url="http://localhost:8081",  # 使用不同端口
                 ) as ctx:
-                    # Step 1: Navigate to the page
+                    # 步骤 1: 导航到页面
                     ctx.goto("/")
                     ctx.screenshot("step1-initial-load")
 
-                    # Step 2: Wait for the page to load
+                    # 步骤 2: 等待页面加载
                     ctx.wait_for_selector("text=Dashboard", timeout=15000)
                     ctx.screenshot("step2-dashboard-visible")
 
-                    # Step 3: Verify agent list is displayed
+                    # 步骤 3: 验证 Agent 列表显示
                     page = ctx.page
                     if not page:
                         return False
 
-                    # Check for Agents header
+                    # 检查 Agents 标题
                     agents_header = page.locator("text=Agents")
                     if agents_header.count() == 0:
-                        logger.error("Agents header not found")
+                        logger.error("未找到 Agents 标题")
                         return False
 
-                    # Wait for agent list to load (API call)
+                    # 等待 Agent 列表加载（API 调用）
                     time.sleep(2)
                     ctx.screenshot("step3-agent-list")
 
-                    # Step 4: Check for agent items
+                    # 步骤 4: 检查 Agent 项目
                     agent_1 = page.locator("text=agent-1")
                     agent_2 = page.locator("text=agent-2")
                     agent_3 = page.locator("text=agent-3")
 
                     if agent_1.count() == 0:
-                        logger.error("agent-1 not found in list")
+                        logger.error("列表中未找到 agent-1")
                         return False
                     if agent_2.count() == 0:
-                        logger.error("agent-2 not found in list")
+                        logger.error("列表中未找到 agent-2")
                         return False
                     if agent_3.count() == 0:
-                        logger.error("agent-3 not found in list")
+                        logger.error("列表中未找到 agent-3")
                         return False
 
-                    logger.info("All 3 agents found in list")
+                    logger.info("所有 3 个 Agent 已在列表中找到")
                     ctx.screenshot("step4-agents-found")
 
-                    # Step 5: Click on agent-1 (online)
+                    # 步骤 5: 点击 agent-1（在线）
                     agent_1.first.click()
                     time.sleep(1)
                     ctx.screenshot("step5-agent-1-selected")
 
-                    # Step 6: Click the + button to add a port
+                    # 步骤 6: 点击 + 按钮添加端口
                     plus_button = page.locator("button:has-text('+')")
                     if plus_button.count() == 0:
-                        logger.error("Plus button not found")
+                        logger.error("未找到 + 按钮")
                         return False
 
                     plus_button.first.click()
                     time.sleep(0.5)
                     ctx.screenshot("step6-add-port-input")
 
-                    # Step 7: Enter port number
+                    # 步骤 7: 输入端口号
                     port_input = page.locator("input[placeholder*='Port']")
                     if port_input.count() == 0:
-                        logger.error("Port input not found")
+                        logger.error("未找到端口输入框")
                         return False
 
                     port_input.first.fill("3000")
                     ctx.screenshot("step7-port-entered")
 
-                    # Step 8: Click Add button
+                    # 步骤 8: 点击 Add 按钮
                     add_button = page.locator("button:has-text('Add')")
                     if add_button.count() == 0:
-                        logger.error("Add button not found")
+                        logger.error("未找到 Add 按钮")
                         return False
 
                     add_button.first.click()
                     time.sleep(1)
                     ctx.screenshot("step8-tab-created")
 
-                    # Step 9: Verify tab was created with port
+                    # 步骤 9: 验证端口标签页已创建
                     port_tab = page.locator("text=:3000")
                     if port_tab.count() == 0:
-                        logger.error("Port tab :3000 not found")
+                        logger.error("未找到端口标签页 :3000")
                         return False
 
-                    logger.info("Port tab :3000 created successfully")
+                    logger.info("端口标签页 :3000 创建成功")
                     ctx.screenshot("step9-test-complete")
 
-                    logger.info("Test completed successfully")
+                    logger.info("测试成功完成")
                     return True
 
             except Exception as e:
-                logger.exception(f"Test failed with error: {e}")
+                logger.exception(f"测试失败: {e}")
                 return False
             finally:
                 browser.close()
 
     finally:
-        # Cleanup backend process
+        # 清理后端进程
         if backend_process:
-            logger.info("Stopping dashboard backend...")
+            logger.info("停止 Dashboard 后端...")
             backend_process.terminate()
             try:
                 backend_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 backend_process.kill()
-            logger.info("Dashboard backend stopped")
+            logger.info("Dashboard 后端已停止")
