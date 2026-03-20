@@ -4,6 +4,17 @@
 验证前端正确加载并显示后端的健康检查状态。
 """
 
+CASE_META = {
+    "title": "基础健康检查页面测试",
+    "description": "验证 Dashboard 前端能正确加载，并显示后端的健康检查状态（包括 Dashboard 标题、Agents 列表区域）。",
+    "steps": {
+        "step1-initial-load": "打开 Dashboard 首页，页面开始加载",
+        "step2-dashboard-visible": "Dashboard 标题出现，页面主体框架渲染完成",
+        "step3-agent-list-loaded": "等待 Agent 列表区域加载完毕",
+        "step4-verification-complete": "验证页面结构：确认 Dashboard 标题、Agents 标题、Select an Agent 提示均存在",
+    },
+}
+
 import logging
 import os
 import subprocess

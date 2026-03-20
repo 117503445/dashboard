@@ -7,6 +7,22 @@
 3. 用户可以添加端口标签页
 """
 
+CASE_META = {
+    "title": "Agent 列表和代理测试",
+    "description": "使用模拟 Agent 验证 Dashboard 的核心交互流程：Agent 列表展示、选择 Agent、添加端口标签页。",
+    "steps": {
+        "step1-initial-load": "打开 Dashboard 首页",
+        "step2-dashboard-visible": "Dashboard 标题出现，页面加载完成",
+        "step3-agent-list": "Agent 列表已加载（通过 API 获取）",
+        "step4-agents-found": "验证 agent-1、agent-2、agent-3 三个 Agent 均在列表中",
+        "step5-agent-1-selected": "点击选择 agent-1（在线状态）",
+        "step6-add-port-input": "点击 + 按钮，弹出端口输入框",
+        "step7-port-entered": "在输入框中填入端口号 3000",
+        "step8-tab-created": "点击 Add 按钮，端口标签页创建成功",
+        "step9-test-complete": "验证 :3000 标签页已显示，测试完成",
+    },
+}
+
 import logging
 import os
 import socket

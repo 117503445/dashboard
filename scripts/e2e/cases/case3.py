@@ -7,6 +7,25 @@
 3. 转发的服务内容在 Dashboard iframe 中可见
 """
 
+CASE_META = {
+    "title": "SSH 端口转发和代理测试",
+    "description": (
+        "端到端验证完整的 SSH 隧道转发链路：启动 sshole-hub 和 sshole-agent，"
+        "Dashboard 通过 Hub API 发现 Agent，建立 SSH 隧道，"
+        "远程服务内容通过代理在 Dashboard iframe 中正确显示。"
+    ),
+    "steps": {
+        "01-initial-load": "打开 Dashboard 首页",
+        "02-dashboard-loaded": "Dashboard 加载完成，标题可见",
+        "03-agent-list": "等待 Agent 列表通过 Hub API 轮询加载",
+        "04-agent-selected": "Agent 'e2e-agent' 出现在列表中，点击选中",
+        "05-port-entered": "点击 + 按钮，输入远程服务端口号",
+        "06-tab-created": "端口标签页创建成功",
+        "07-iframe-content": "通过 SSH 隧道转发的服务内容在 iframe 中加载",
+        "08-forwarded-service-fullpage": "直接访问代理 URL，验证转发的服务页面完整显示",
+    },
+}
+
 import logging
 import os
 import signal
