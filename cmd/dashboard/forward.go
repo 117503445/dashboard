@@ -357,6 +357,28 @@ func (fm *ForwardManager) cleanupIdle() {
 	}
 }
 
+// GetSSHClient 获取或创建到指定 Agent 的 SSH 连接
+func (fm *ForwardManager) GetSSHClient(agentName string, hubPort int32) (*ssh.Client, error) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	return fm.getOrCreateSSHConn(agentName, hubPort)
+}
+
+// RunCommand 在指定 Agent 上执行命令并返回输出
+func (fm *ForwardManager) RunCommand(agentName string, hubPort int32, cmd string) (string, error) {
+	client, err := fm.GetSSHClient(agentName, hubPort)
+	if err != nil {
+		return "", fmt.Errorf("获取 SSH 连接失败: %w", err)
+	}
+	session, err := client.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("创建 SSH 会话失败: %w", err)
+	}
+	defer session.Close()
+	output, err := session.CombinedOutput(cmd)
+	return string(output), err
+}
+
 // Close 关闭所有转发和 SSH 连接
 func (fm *ForwardManager) Close() {
 	fm.cancel()

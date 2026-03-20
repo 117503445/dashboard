@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/117503445/goutils"
@@ -220,9 +224,16 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetHost := fmt.Sprintf("127.0.0.1:%d", localPort)
+
+	if isWebSocketUpgrade(r) {
+		s.proxyWebSocket(w, r, targetHost, remainingPath, rawQuery)
+		return
+	}
+
 	target := &url.URL{
 		Scheme:   "http",
-		Host:     fmt.Sprintf("127.0.0.1:%d", localPort),
+		Host:     targetHost,
 		Path:     remainingPath,
 		RawQuery: rawQuery,
 	}
@@ -237,6 +248,88 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	proxy.ServeHTTP(w, r)
+}
+
+func isWebSocketUpgrade(r *http.Request) bool {
+	return strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") &&
+		strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+}
+
+// proxyWebSocket 通过 hijack 实现 WebSocket 双向代理。
+// 需要显式处理 upgrade 而非依赖 httputil.ReverseProxy，
+// 因为必须改写 Origin 头以通过 code-server 的跨域检查。
+func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, targetHost, path, rawQuery string) {
+	backendConn, err := net.DialTimeout("tcp", targetHost, 10*time.Second)
+	if err != nil {
+		log.Error().Err(err).Str("target", targetHost).Msg("WebSocket 后端连接失败")
+		http.Error(w, fmt.Sprintf("WebSocket 后端连接失败: %v", err), http.StatusBadGateway)
+		return
+	}
+
+	outReq := r.Clone(r.Context())
+	outReq.URL = &url.URL{Path: path, RawQuery: rawQuery}
+	outReq.Host = targetHost
+	outReq.RequestURI = ""
+	outReq.Header.Set("Origin", "http://"+targetHost)
+
+	if err := outReq.Write(backendConn); err != nil {
+		backendConn.Close()
+		log.Error().Err(err).Msg("WebSocket 请求转发失败")
+		http.Error(w, fmt.Sprintf("WebSocket 请求转发失败: %v", err), http.StatusBadGateway)
+		return
+	}
+
+	br := bufio.NewReader(backendConn)
+	resp, err := http.ReadResponse(br, outReq)
+	if err != nil {
+		backendConn.Close()
+		log.Error().Err(err).Msg("WebSocket 读取后端响应失败")
+		http.Error(w, fmt.Sprintf("WebSocket 后端响应失败: %v", err), http.StatusBadGateway)
+		return
+	}
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		backendConn.Close()
+		log.Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("WebSocket 升级被拒绝")
+		http.Error(w, fmt.Sprintf("WebSocket 升级失败: %d %s", resp.StatusCode, string(body)), resp.StatusCode)
+		return
+	}
+
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		resp.Body.Close()
+		backendConn.Close()
+		http.Error(w, "不支持 WebSocket hijack", http.StatusInternalServerError)
+		return
+	}
+
+	clientConn, brw, err := hijacker.Hijack()
+	if err != nil {
+		resp.Body.Close()
+		backendConn.Close()
+		log.Error().Err(err).Msg("WebSocket hijack 失败")
+		return
+	}
+
+	resp.Write(brw)
+	brw.Flush()
+
+	errc := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(backendConn, brw)
+		errc <- err
+	}()
+	go func() {
+		_, err := io.Copy(clientConn, br)
+		errc <- err
+	}()
+
+	<-errc
+	clientConn.Close()
+	backendConn.Close()
+	<-errc
 }
 
 func (s *Server) getAgents(ctx context.Context) ([]*rpc.AgentInfo, error) {

@@ -16,7 +16,7 @@ interface IframeTabProps {
 
 export function IframeTab({ tabs, activeTabId, onTabClick, onTabClose, onAddTab }: IframeTabProps) {
   return (
-    <div className="flex items-center gap-1 p-2 bg-slate-100 border-b border-slate-200 overflow-x-auto">
+    <div className="flex items-center gap-1 p-2 overflow-x-auto flex-1 min-w-0">
       {tabs.map((tab) => (
         <div
           key={tab.id}

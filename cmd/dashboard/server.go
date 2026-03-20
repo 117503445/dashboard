@@ -40,6 +40,9 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 	path, handler := rpcconnect.NewTemplateServiceHandler(server, interceptors)
 	mux.Handle(path, handler)
 
+	// API 处理器
+	mux.Handle("/api/agents/", http.HandlerFunc(server.SetupCodeServerHandler))
+
 	// 代理处理器
 	mux.Handle("/proxy/agents/", http.HandlerFunc(server.ProxyHandler))
 
@@ -52,6 +55,8 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 		AllowedHeaders: []string{"*"},
 		MaxAge:         86400,
 	})
+
+	rootHandler := c.Handler(mux)
 
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -66,7 +71,7 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 
 	log.Ctx(ctx).Info().Msgf("正在监听 %s", listener.Addr().String())
 	log.Ctx(ctx).Info().Msgf("sshole-hub 地址: %s", config.HubURL)
-	if err := http.Serve(listener, c.Handler(mux)); err != nil {
+	if err := http.Serve(listener, rootHandler); err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("HTTP 服务异常退出")
 		return err
 	}
