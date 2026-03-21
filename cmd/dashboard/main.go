@@ -30,7 +30,7 @@ func main() {
 		Str("BuildDir", buildinfo.BuildDir).
 		Msg("构建信息")
 
-	port := os.Getenv("PORT")
+	port := os.Getenv("DASHBOARD_PORT")
 	if port == "" {
 		port = "8080"
 	}
