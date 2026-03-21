@@ -38,7 +38,7 @@ jobs:
           cd /workspace
           git checkout ${{ github.sha }}
 
-          docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }} && docker login -u ${{ secrets.ALI_REGISTRY_USERNAME }} -p ${{ secrets.ALI_REGISTRY_PASSWORD }} registry.cn-hangzhou.aliyuncs.com
+          podman login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }} docker.io && podman login -u ${{ secrets.ALI_REGISTRY_USERNAME }} -p ${{ secrets.ALI_REGISTRY_PASSWORD }} registry.cn-hangzhou.aliyuncs.com
           go-task build:docker -- --push
 
           go-task build:release

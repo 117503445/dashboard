@@ -24,3 +24,20 @@ tasks:
     deps: [":base:clear", ":build:bin"]
     cmds:
       - cd ./scripts/go-scripts && go run . build-docker {{.CLI_ARGS}}
+
+  release:
+    desc: "为多个平台构建发布版本"
+    deps: [":base:clear"]
+    sources:
+      - ./cmd/dashboard/**
+      - ./internal/**
+      - ./pkg/**
+      - ./.git/**
+      - ./go.mod
+      - ./go.sum
+      - ./scripts/go-scripts/**
+      - ./scripts/tasks/**
+    generates:
+      - ./data/release/dashboard-*
+    cmds:
+      - cd ./scripts/go-scripts && go run . release

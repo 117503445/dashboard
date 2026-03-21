@@ -55,7 +55,7 @@ func release() {
 			name string
 			path string
 		}{
-			{"cli", "./cmd/cli"},
+			{"dashboard", "./cmd/dashboard"},
 		} {
 			wg.Add(1)
 			go func(target struct {
