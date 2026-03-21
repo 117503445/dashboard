@@ -14,19 +14,19 @@ import (
 
 // pushImage 推送单个镜像
 func pushImage(ctx context.Context, imageName, registry string) error {
-	log.Ctx(ctx).Info().Str("image", imageName).Str("registry", registry).Msg("pushing docker image")
+	log.Ctx(ctx).Info().Str("image", imageName).Str("registry", registry).Msg("pushing container image")
 
-	cmd := exec.Command("docker", "push", imageName)
+	cmd := exec.Command("podman", "push", imageName)
 	cmd.Dir = "../.."
 	cmd.Env = os.Environ()
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Ctx(ctx).Error().Err(err).Str("output", string(output)).Str("image", imageName).Str("registry", registry).Msg("failed to push docker image")
+		log.Ctx(ctx).Error().Err(err).Str("output", string(output)).Str("image", imageName).Str("registry", registry).Msg("failed to push container image")
 		return err
 	}
 
-	log.Ctx(ctx).Info().Str("image", imageName).Str("registry", registry).Msg("pushed docker image successfully")
+	log.Ctx(ctx).Info().Str("image", imageName).Str("registry", registry).Msg("pushed container image successfully")
 	return nil
 }
 
@@ -35,7 +35,7 @@ func buildDocker() {
 
 	ctx := context.Background()
 	ctx = log.Logger.WithContext(ctx)
-	log.Ctx(ctx).Info().Msg("build docker")
+	log.Ctx(ctx).Info().Msg("build container image")
 
 	// 获取构建信息
 	buildInfo, err := goutils.GetBuildInfo(ctx)
@@ -60,24 +60,24 @@ func buildDocker() {
 		aliyunTag += "-" + buildDate
 	}
 
-	log.Ctx(ctx).Info().Str("tag", tag).Str("aliyunTag", aliyunTag).Bool("dirty", buildInfo.GitDirty).Msg("building docker image")
+	log.Ctx(ctx).Info().Str("tag", tag).Str("aliyunTag", aliyunTag).Bool("dirty", buildInfo.GitDirty).Msg("building container image")
 
-	// 构建 docker 镜像
-	cmd := exec.Command("docker", "build", "-t", tag, "-t", "117503445/dashboard:latest", "-t", aliyunTag, "-t", "registry.cn-hangzhou.aliyuncs.com/117503445/dashboard:latest", "-f", "./scripts/docker/rpc.Dockerfile", ".")
+	// 构建容器镜像
+	cmd := exec.Command("podman", "build", "-t", tag, "-t", "117503445/dashboard:latest", "-t", aliyunTag, "-t", "registry.cn-hangzhou.aliyuncs.com/117503445/dashboard:latest", "-f", "./scripts/docker/rpc.Dockerfile", ".")
 	cmd.Dir = "../.."
 	cmd.Env = os.Environ()
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Ctx(ctx).Panic().Err(err).Str("output", string(output)).Msg("failed to build docker image")
+		log.Ctx(ctx).Panic().Err(err).Str("output", string(output)).Msg("failed to build container image")
 		return
 	}
 
-	log.Ctx(ctx).Info().Str("tag", tag).Msg("docker image built successfully")
+	log.Ctx(ctx).Info().Str("tag", tag).Msg("container image built successfully")
 
 	// 如果需要推送
 	if cli.BuildDocker.Push {
-		log.Ctx(ctx).Info().Str("tag", tag).Msg("pushing docker images")
+		log.Ctx(ctx).Info().Str("tag", tag).Msg("pushing container images")
 
 		// 定义要推送的镜像列表
 		images := []struct {
@@ -114,12 +114,12 @@ func buildDocker() {
 
 		// 检查是否有错误
 		if firstErr != nil {
-			log.Ctx(ctx).Panic().Err(firstErr).Msg("failed to push docker images")
+			log.Ctx(ctx).Panic().Err(firstErr).Msg("failed to push container images")
 			return
 		}
 
-		log.Ctx(ctx).Info().Msg("all docker images pushed successfully")
+		log.Ctx(ctx).Info().Msg("all container images pushed successfully")
 	}
 
-	log.Ctx(ctx).Info().Bool("push", cli.BuildDocker.Push).Msg("docker build completed")
+	log.Ctx(ctx).Info().Bool("push", cli.BuildDocker.Push).Msg("container build completed")
 }
