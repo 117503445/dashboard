@@ -50,8 +50,8 @@ func buildDocker() {
 		gitCommit = gitCommit[:7]
 	}
 
-	tag := "117503445/go-template-rpc:" + gitCommit
-	aliyunTag := "registry.cn-hangzhou.aliyuncs.com/117503445/go-template-rpc:" + gitCommit
+	tag := "117503445/dashboard:" + gitCommit
+	aliyunTag := "registry.cn-hangzhou.aliyuncs.com/117503445/dashboard:" + gitCommit
 
 	// 如果是 dirty build，添加构建日期
 	if buildInfo.GitDirty {
@@ -63,7 +63,7 @@ func buildDocker() {
 	log.Ctx(ctx).Info().Str("tag", tag).Str("aliyunTag", aliyunTag).Bool("dirty", buildInfo.GitDirty).Msg("building docker image")
 
 	// 构建 docker 镜像
-	cmd := exec.Command("docker", "build", "-t", tag, "-t", "117503445/go-template-rpc:latest", "-t", aliyunTag, "-t", "registry.cn-hangzhou.aliyuncs.com/117503445/go-template-rpc:latest", "-f", "./scripts/docker/rpc.Dockerfile", ".")
+	cmd := exec.Command("docker", "build", "-t", tag, "-t", "117503445/dashboard:latest", "-t", aliyunTag, "-t", "registry.cn-hangzhou.aliyuncs.com/117503445/dashboard:latest", "-f", "./scripts/docker/rpc.Dockerfile", ".")
 	cmd.Dir = "../.."
 	cmd.Env = os.Environ()
 
@@ -84,9 +84,9 @@ func buildDocker() {
 			imageName string
 			registry  string
 		}{
-			{"117503445/go-template-rpc:latest", "Docker Hub"},
+			{"117503445/dashboard:latest", "Docker Hub"},
 			{tag, "Docker Hub"},
-			{"registry.cn-hangzhou.aliyuncs.com/117503445/go-template-rpc:latest", "Aliyun"},
+			{"registry.cn-hangzhou.aliyuncs.com/117503445/dashboard:latest", "Aliyun"},
 			{aliyunTag, "Aliyun"},
 		}
 
