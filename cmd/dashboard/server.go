@@ -40,14 +40,14 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 	path, handler := rpcconnect.NewTemplateServiceHandler(server, interceptors)
 	mux.Handle(path, handler)
 
-	// API 处理器
-	mux.Handle("/api/agents/", http.HandlerFunc(server.SetupCodeServerHandler))
+	// API 处理器（应用 HTTPMiddleware 注入 request ID）
+	mux.Handle("/api/agents/", HTTPMiddleware(http.HandlerFunc(server.SetupCodeServerHandler)))
 
-	// 代理处理器
-	mux.Handle("/proxy/agents/", http.HandlerFunc(server.ProxyHandler))
+	// 代理处理器（应用 HTTPMiddleware 注入 request ID）
+	mux.Handle("/proxy/agents/", HTTPMiddleware(http.HandlerFunc(server.ProxyHandler)))
 
-	// 静态文件处理器（SPA 兜底路由）
-	mux.Handle("/", staticHandler())
+	// 静态文件处理器（SPA 兜底路由，应用 HTTPMiddleware 注入 request ID）
+	mux.Handle("/", HTTPMiddleware(staticHandler()))
 
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},

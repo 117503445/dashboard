@@ -27,6 +27,54 @@ import (
 	"github.com/117503445/dashboard/pkg/rpc/rpcconnect"
 )
 
+// HTTPMiddleware 为普通 HTTP 请求注入 request ID 到 context
+func HTTPMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = r.Header.Get("x-fc-request-id")
+			if requestID == "" {
+				requestID = goutils.UUID7()
+			}
+		}
+
+		ctx := WithContext(r.Context(), AppContext{
+			RequestID: requestID,
+		})
+
+		ctx = log.Output(glog.NewConsoleWriter(
+			glog.ConsoleWriterConfig{
+				RequestId: requestID,
+				DirBuild:  buildinfo.BuildDir,
+			},
+		)).Level(zerolog.DebugLevel).With().Caller().Logger().WithContext(ctx)
+
+		log.Ctx(ctx).Debug().
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Msg("收到 HTTP 请求")
+
+		// 包装 ResponseWriter 以记录响应状态码
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(wrapped, r.WithContext(ctx))
+
+		log.Ctx(ctx).Debug().
+			Int("status", wrapped.statusCode).
+			Msg("HTTP 请求完成")
+	})
+}
+
+// responseWriter 包装 http.ResponseWriter 以捕获状态码
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *responseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
 func NewCtxInterceptor() connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(
@@ -179,6 +227,8 @@ func (s *Server) listMockAgents(ctx context.Context) (*connect.Response[rpc.List
 // URL 格式: /proxy/agents/{agentId}/ports/{port}/...
 // 通过 ForwardManager 建立 SSH 隧道转发请求到 Agent
 func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	pathParts := strings.Split(strings.TrimPrefix(r.URL.Path, "/proxy/agents/"), "/")
 	if len(pathParts) < 3 || pathParts[1] != "ports" {
 		http.Error(w, "URL 格式错误，应为 /proxy/agents/{agentId}/ports/{port}", http.StatusBadRequest)
@@ -198,7 +248,7 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agents, err := s.getAgents(r.Context())
+	agents, err := s.getAgents(ctx)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("获取 Agent 列表失败: %v", err), http.StatusInternalServerError)
 		return
@@ -228,7 +278,7 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	localPort, err := s.forwardManager.GetOrCreateForward(agentID, remotePort, hubPort)
 	if err != nil {
-		log.Error().Err(err).Str("agent", agentID).Int("port", remotePort).Msg("创建转发失败")
+		log.Ctx(ctx).Error().Err(err).Str("agent", agentID).Int("port", remotePort).Msg("创建转发失败")
 		http.Error(w, fmt.Sprintf("创建转发失败: %v", err), http.StatusBadGateway)
 		return
 	}
@@ -236,7 +286,7 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	targetHost := fmt.Sprintf("127.0.0.1:%d", localPort)
 
 	if isWebSocketUpgrade(r) {
-		s.proxyWebSocket(w, r, targetHost, remainingPath, rawQuery)
+		s.proxyWebSocket(ctx, w, r, targetHost, remainingPath, rawQuery)
 		return
 	}
 
@@ -267,15 +317,15 @@ func isWebSocketUpgrade(r *http.Request) bool {
 // proxyWebSocket 通过 hijack 实现 WebSocket 双向代理。
 // 需要显式处理 upgrade 而非依赖 httputil.ReverseProxy，
 // 因为必须改写 Origin 头以通过 code-server 的跨域检查。
-func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, targetHost, path, rawQuery string) {
+func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Request, targetHost, path, rawQuery string) {
 	backendConn, err := net.DialTimeout("tcp", targetHost, 10*time.Second)
 	if err != nil {
-		log.Error().Err(err).Str("target", targetHost).Msg("WebSocket 后端连接失败")
+		log.Ctx(ctx).Error().Err(err).Str("target", targetHost).Msg("WebSocket 后端连接失败")
 		http.Error(w, fmt.Sprintf("WebSocket 后端连接失败: %v", err), http.StatusBadGateway)
 		return
 	}
 
-	outReq := r.Clone(r.Context())
+	outReq := r.Clone(ctx)
 	outReq.URL = &url.URL{Path: path, RawQuery: rawQuery}
 	outReq.Host = targetHost
 	outReq.RequestURI = ""
@@ -283,7 +333,7 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, targetHo
 
 	if err := outReq.Write(backendConn); err != nil {
 		backendConn.Close()
-		log.Error().Err(err).Msg("WebSocket 请求转发失败")
+		log.Ctx(ctx).Error().Err(err).Msg("WebSocket 请求转发失败")
 		http.Error(w, fmt.Sprintf("WebSocket 请求转发失败: %v", err), http.StatusBadGateway)
 		return
 	}
@@ -292,7 +342,7 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, targetHo
 	resp, err := http.ReadResponse(br, outReq)
 	if err != nil {
 		backendConn.Close()
-		log.Error().Err(err).Msg("WebSocket 读取后端响应失败")
+		log.Ctx(ctx).Error().Err(err).Msg("WebSocket 读取后端响应失败")
 		http.Error(w, fmt.Sprintf("WebSocket 后端响应失败: %v", err), http.StatusBadGateway)
 		return
 	}
@@ -301,7 +351,7 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, targetHo
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		backendConn.Close()
-		log.Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("WebSocket 升级被拒绝")
+		log.Ctx(ctx).Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("WebSocket 升级被拒绝")
 		http.Error(w, fmt.Sprintf("WebSocket 升级失败: %d %s", resp.StatusCode, string(body)), resp.StatusCode)
 		return
 	}
@@ -318,7 +368,7 @@ func (s *Server) proxyWebSocket(w http.ResponseWriter, r *http.Request, targetHo
 	if err != nil {
 		resp.Body.Close()
 		backendConn.Close()
-		log.Error().Err(err).Msg("WebSocket hijack 失败")
+		log.Ctx(ctx).Error().Err(err).Msg("WebSocket hijack 失败")
 		return
 	}
 

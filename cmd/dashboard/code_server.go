@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +31,8 @@ type setupCodeServerResponse struct {
 // SetupCodeServerHandler 在 Agent 上设置并启动 code-server
 // POST /api/agents/{agentName}/setup-code-server
 func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -47,7 +50,7 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	agents, err := s.getAgents(r.Context())
+	agents, err := s.getAgents(ctx)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, setupCodeServerResponse{
 			Message: fmt.Sprintf("获取 Agent 列表失败: %v", err),
@@ -71,11 +74,11 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	log.Info().Str("agent", agentName).Msg("开始设置 code-server")
+	log.Ctx(ctx).Info().Str("agent", agentName).Msg("开始设置 code-server")
 
 	// 1. 下载 tarball 到本地（如已存在则跳过）
 	localTarball := filepath.Join("data", "bin", codeServerTarball)
-	if err := downloadCodeServerIfNeeded(localTarball); err != nil {
+	if err := downloadCodeServerIfNeeded(ctx, localTarball); err != nil {
 		writeJSON(w, http.StatusInternalServerError, setupCodeServerResponse{
 			Message: fmt.Sprintf("下载 code-server 失败: %v", err),
 		})
@@ -95,7 +98,7 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 
 	// 3. 传输 tarball（如已存在则跳过）
 	if strings.TrimSpace(output) != "EXISTS" {
-		log.Info().Str("agent", agentName).Msg("传输 code-server 到 Agent")
+		log.Ctx(ctx).Info().Str("agent", agentName).Msg("传输 code-server 到 Agent")
 
 		if _, err := s.forwardManager.RunCommand(agentName, hubPort, "mkdir -p ~/.dashboard/bin"); err != nil {
 			writeJSON(w, http.StatusInternalServerError, setupCodeServerResponse{
@@ -117,7 +120,7 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 			})
 			return
 		}
-		log.Info().Str("agent", agentName).Msg("code-server 传输完成")
+		log.Ctx(ctx).Info().Str("agent", agentName).Msg("code-server 传输完成")
 	}
 
 	// 4. 解压 tarball（如已存在则跳过）
@@ -132,7 +135,7 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if strings.TrimSpace(output) != "EXISTS" {
-		log.Info().Str("agent", agentName).Msg("解压 code-server")
+		log.Ctx(ctx).Info().Str("agent", agentName).Msg("解压 code-server")
 		_, err = s.forwardManager.RunCommand(agentName, hubPort,
 			fmt.Sprintf("mkdir -p ~/.dashboard/code-server && tar xzf %s -C ~/.dashboard/code-server/", remoteTarball))
 		if err != nil {
@@ -151,7 +154,7 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if strings.TrimSpace(output) != "IN_USE" {
-		log.Info().Str("agent", agentName).Int("port", codeServerPort).Msg("启动 code-server")
+		log.Ctx(ctx).Info().Str("agent", agentName).Int("port", codeServerPort).Msg("启动 code-server")
 		codeServerBin := fmt.Sprintf("%s/bin/code-server", remoteDir)
 		_, _ = s.forwardManager.RunCommand(agentName, hubPort,
 			fmt.Sprintf("unset VSCODE_IPC_HOOK_CLI; nohup %s --bind-addr 127.0.0.1:%d --auth none $HOME > ~/.dashboard/code-server/code-server.log 2>&1 &",
@@ -194,7 +197,7 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode < 500 {
-				log.Info().Str("agent", agentName).Msg("code-server 验证成功")
+				log.Ctx(ctx).Info().Str("agent", agentName).Msg("code-server 验证成功")
 				writeJSON(w, http.StatusOK, setupCodeServerResponse{
 					Success: true,
 					Message: "code-server 已启动",
@@ -206,7 +209,7 @@ func (s *Server) SetupCodeServerHandler(w http.ResponseWriter, r *http.Request) 
 		time.Sleep(1 * time.Second)
 	}
 
-	log.Warn().Str("agent", agentName).Msg("code-server 验证超时，但转发已创建")
+	log.Ctx(ctx).Warn().Str("agent", agentName).Msg("code-server 验证超时，但转发已创建")
 	writeJSON(w, http.StatusOK, setupCodeServerResponse{
 		Success: true,
 		Message: "code-server 转发已创建（验证超时）",
@@ -220,9 +223,9 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	json.NewEncoder(w).Encode(data)
 }
 
-func downloadCodeServerIfNeeded(targetPath string) error {
+func downloadCodeServerIfNeeded(ctx context.Context, targetPath string) error {
 	if _, err := os.Stat(targetPath); err == nil {
-		log.Info().Str("path", targetPath).Msg("code-server tarball 已存在，跳过下载")
+		log.Ctx(ctx).Info().Str("path", targetPath).Msg("code-server tarball 已存在，跳过下载")
 		return nil
 	}
 
@@ -231,7 +234,7 @@ func downloadCodeServerIfNeeded(targetPath string) error {
 		return fmt.Errorf("创建目录 %s 失败: %w", dir, err)
 	}
 
-	log.Info().Str("url", codeServerURL).Str("target", targetPath).Msg("开始下载 code-server")
+	log.Ctx(ctx).Info().Str("url", codeServerURL).Str("target", targetPath).Msg("开始下载 code-server")
 
 	client := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := client.Get(codeServerURL)
@@ -262,7 +265,7 @@ func downloadCodeServerIfNeeded(targetPath string) error {
 		return fmt.Errorf("重命名文件失败: %w", err)
 	}
 
-	log.Info().Str("target", targetPath).Msg("code-server 下载完成")
+	log.Ctx(ctx).Info().Str("target", targetPath).Msg("code-server 下载完成")
 	return nil
 }
 
