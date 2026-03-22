@@ -9,6 +9,7 @@ tasks:
 
   build:
     desc: "构建前端"
+    deps: [install]
     dir: ./fe
     cmds:
       - pnpm build

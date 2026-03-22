@@ -27,7 +27,7 @@ tasks:
 
   release:
     desc: "为多个平台构建发布版本"
-    deps: [":base:clear", ":fe:install", ":fe:build"]
+    deps: [":base:clear", ":fe:build"]
     sources:
       - ./cmd/dashboard/**
       - ./internal/**
