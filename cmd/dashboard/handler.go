@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -125,6 +126,10 @@ func (s *Server) ListAgents(ctx context.Context, req *connect.Request[rpc.ListAg
 		}
 	}
 
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].HubPort < agents[j].HubPort
+	})
+
 	return &connect.Response[rpc.ListAgentsResponse]{
 		Msg: &rpc.ListAgentsResponse{
 			Agents: agents,
@@ -158,6 +163,10 @@ func (s *Server) listMockAgents(ctx context.Context) (*connect.Response[rpc.List
 			})
 		}
 	}
+
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].HubPort < agents[j].HubPort
+	})
 
 	return &connect.Response[rpc.ListAgentsResponse]{
 		Msg: &rpc.ListAgentsResponse{
