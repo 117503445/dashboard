@@ -19,6 +19,9 @@ func release() {
 	ctx = log.Logger.WithContext(ctx)
 	log.Ctx(ctx).Info().Msg("release build")
 
+	// Build frontend first
+	buildFrontend(ctx)
+
 	// 创建输出目录
 	releaseDir := "./data/release"
 	if err := os.MkdirAll(releaseDir, 0755); err != nil {
