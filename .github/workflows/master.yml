@@ -39,7 +39,6 @@ jobs:
           git checkout ${{ github.sha }}
 
           podman login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }} docker.io && podman login -u ${{ secrets.ALI_REGISTRY_USERNAME }} -p ${{ secrets.ALI_REGISTRY_PASSWORD }} registry.cn-hangzhou.aliyuncs.com
-          go-task build:docker -- --push
 
           go-task build:release
 
@@ -59,5 +58,7 @@ jobs:
               gh release upload ${sha_short} "$file" --clobber
             fi
           done
+
+          go-task build:docker -- --push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
