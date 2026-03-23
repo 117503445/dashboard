@@ -364,7 +364,7 @@ func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *h
 		return
 	}
 
-	clientConn, brw, err := hijacker.Hijack()
+	clientConn, clientBuf, err := hijacker.Hijack()
 	if err != nil {
 		resp.Body.Close()
 		backendConn.Close()
@@ -372,19 +372,29 @@ func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *h
 		return
 	}
 
-	resp.Write(brw)
-	brw.Flush()
+	// 写入响应头到客户端
+	resp.Write(clientBuf)
+	clientBuf.Flush()
 
+	// 将 bufio.Reader 中已缓冲的数据写入客户端（可能包含 WebSocket 帧）
+	if br.Buffered() > 0 {
+		buffered := make([]byte, br.Buffered())
+		_, _ = br.Read(buffered)
+		clientConn.Write(buffered)
+	}
+
+	// 使用原始连接进行双向数据复制
 	errc := make(chan error, 2)
 	go func() {
-		_, err := io.Copy(backendConn, brw)
+		_, err := io.Copy(backendConn, clientConn)
 		errc <- err
 	}()
 	go func() {
-		_, err := io.Copy(clientConn, br)
+		_, err := io.Copy(clientConn, backendConn)
 		errc <- err
 	}()
 
+	// 等待一个方向结束，然后关闭连接
 	<-errc
 	clientConn.Close()
 	backendConn.Close()
