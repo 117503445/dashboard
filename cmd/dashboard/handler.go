@@ -244,7 +244,7 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.forwardManager == nil {
-		http.Error(w, "SSH 转发未启用（请配置 DASHBOARD_SSH_PASSWORD 或 DASHBOARD_SSH_KEY_PATH）", http.StatusServiceUnavailable)
+		http.Error(w, "SSH 转发未启用（请配置 DASHBOARD_SSHOLE_HUB_URL）", http.StatusServiceUnavailable)
 		return
 	}
 

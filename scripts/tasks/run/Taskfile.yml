@@ -46,8 +46,8 @@ tasks:
       # 后台启动 sshole agent
       - ./data/bin/sshole_agent --hub-server "http://localhost:{{.SSHOLE_HUB_PORT}}" --auth "{{.SSHOLE_AUTH_TOKEN}}" --name "{{.SSHOLE_AGENT_NAME}}" > {{.LOG_DIR}}/sshole_agent.log 2>&1 &
       - sleep 1
-      # 后台启动 dashboard（配置 SSH 密码以启用隧道转发）
-      - DASHBOARD_SSHOLE_HUB_URL="http://localhost:{{.SSHOLE_HUB_PORT}}" DASHBOARD_SSHOLE_HUB_TOKEN="{{.SSHOLE_AUTH_TOKEN}}" DASHBOARD_SSH_PASSWORD="tunnel" ./data/dashboard/dashboard > {{.LOG_DIR}}/dashboard.log 2>&1 &
+      # 后台启动 dashboard
+      - DASHBOARD_SSHOLE_HUB_URL="http://localhost:{{.SSHOLE_HUB_PORT}}" DASHBOARD_SSHOLE_HUB_TOKEN="{{.SSHOLE_AUTH_TOKEN}}" ./data/dashboard/dashboard > {{.LOG_DIR}}/dashboard.log 2>&1 &
       - sleep 2
       - echo "Dashboard running at http://localhost:8080"
       - echo "Logs saved to {{.LOG_DIR}}"

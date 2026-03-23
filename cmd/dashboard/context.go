@@ -13,10 +13,6 @@ type Config struct {
 	HubURL     string
 	HubToken   string
 	MockAgents string // 模拟 Agent 数据，格式: "agent1:port1:true,agent2:port2:false"
-
-	SSHUser     string
-	SSHPassword string
-	SSHKeyPath  string
 }
 
 // WithContext 注入 appContext

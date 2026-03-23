@@ -40,20 +40,10 @@ func main() {
 	hubToken := os.Getenv("DASHBOARD_SSHOLE_HUB_TOKEN")
 	mockAgents := os.Getenv("DASHBOARD_MOCK_AGENTS")
 
-	sshUser := os.Getenv("DASHBOARD_SSH_USER")
-	if sshUser == "" {
-		sshUser = "root"
-	}
-	sshPassword := os.Getenv("DASHBOARD_SSH_PASSWORD")
-	sshKeyPath := os.Getenv("DASHBOARD_SSH_KEY_PATH")
-
 	config := Config{
-		HubURL:      hubURL,
-		HubToken:    hubToken,
-		MockAgents:  mockAgents,
-		SSHUser:     sshUser,
-		SSHPassword: sshPassword,
-		SSHKeyPath:  sshKeyPath,
+		HubURL:     hubURL,
+		HubToken:   hubToken,
+		MockAgents: mockAgents,
 	}
 
 	ctx := context.Background()

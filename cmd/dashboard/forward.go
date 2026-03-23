@@ -11,6 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
+	rpcv1 "github.com/117503445/sshole/pkg/rpc/v1"
+	"github.com/117503445/sshole/pkg/rpc/v1/rpcv1connect"
 	"github.com/117503445/sshole/pkg/tunnel"
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
@@ -74,25 +77,44 @@ type ForwardManager struct {
 	sshConns map[string]*ssh.Client // 每个 Agent 一条 SSH 连接
 	portPool map[int]bool
 
-	sshConfig *ssh.ClientConfig
-	hubURL    string // Hub 的 HTTP 地址（如 http://localhost:9001）
-	hubToken  string
+	sshConfig  *ssh.ClientConfig
+	hubURL     string // Hub 的 HTTP 地址（如 http://localhost:9001）
+	hubToken   string
+	sshKeyPair *SSHKeyPair
+
+	// sshole RPC 客户端，用于调用 AppendKnownHost
+	holeClient rpcv1connect.HoleServiceClient
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func NewForwardManager(ctx context.Context, hubURL, hubToken string, sshConfig *ssh.ClientConfig) *ForwardManager {
+func NewForwardManager(ctx context.Context, hubURL, hubToken string, sshKeyPair *SSHKeyPair) *ForwardManager {
 	ctx, cancel := context.WithCancel(ctx)
+
+	// 创建 SSH 配置，使用公钥认证
+	sshConfig := &ssh.ClientConfig{
+		User:            "root",
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshKeyPair.Signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	// 创建 sshole RPC 客户端
+	holeClient := rpcv1connect.NewHoleServiceClient(http.DefaultClient, hubURL,
+		connect.WithInterceptors(&authInterceptor{token: hubToken}))
+
 	fm := &ForwardManager{
-		forwards:  make(map[forwardKey]*ForwardInstance),
-		sshConns:  make(map[string]*ssh.Client),
-		portPool:  make(map[int]bool),
-		sshConfig: sshConfig,
-		hubURL:    hubURL,
-		hubToken:  hubToken,
-		ctx:       ctx,
-		cancel:    cancel,
+		forwards:   make(map[forwardKey]*ForwardInstance),
+		sshConns:   make(map[string]*ssh.Client),
+		portPool:   make(map[int]bool),
+		sshConfig:  sshConfig,
+		hubURL:     hubURL,
+		hubToken:   hubToken,
+		sshKeyPair: sshKeyPair,
+		holeClient: holeClient,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 
 	for i := localPortMin; i <= localPortMax; i++ {
@@ -102,6 +124,32 @@ func NewForwardManager(ctx context.Context, hubURL, hubToken string, sshConfig *
 	go fm.cleanupLoop()
 
 	return fm
+}
+
+// authInterceptor 为 RPC 请求添加 Authorization header
+type authInterceptor struct {
+	token string
+}
+
+func (i *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		if i.token != "" {
+			req.Header().Set("Authorization", "Bearer "+i.token)
+		}
+		return next(ctx, req)
+	}
+}
+
+func (i *authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		return next(ctx, spec)
+	}
+}
+
+func (i *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		return next(ctx, conn)
+	}
 }
 
 // tunnelWSURL 将 Hub 的 HTTP 地址转换为 WebSocket 隧道端点地址
@@ -143,6 +191,11 @@ func (fm *ForwardManager) getOrCreateSSHConn(agentName string, hubPort int32) (*
 		delete(fm.sshConns, agentName)
 	}
 
+	// 在连接前，先调用 AppendKnownHost RPC 将公钥添加到 Agent
+	if err := fm.ensureAuthorizedKey(agentName); err != nil {
+		log.Warn().Err(err).Str("agent", agentName).Msg("添加公钥到 Agent 失败，尝试继续连接")
+	}
+
 	tunnelURL := fm.tunnelWSURL()
 	sessionID := uuid.New().String()
 
@@ -181,6 +234,23 @@ func (fm *ForwardManager) getOrCreateSSHConn(agentName string, hubPort int32) (*
 	fm.sshConns[agentName] = client
 	log.Info().Str("agent", agentName).Msg("通过 WebSocket 隧道建立 SSH 连接成功")
 	return client, nil
+}
+
+// ensureAuthorizedKey 调用 Hub 的 AppendKnownHost RPC 将公钥添加到 Agent
+func (fm *ForwardManager) ensureAuthorizedKey(agentName string) error {
+	ctx, cancel := context.WithTimeout(fm.ctx, 5*time.Second)
+	defer cancel()
+
+	pubKey := strings.TrimSpace(fm.sshKeyPair.PublicKeyString())
+	_, err := fm.holeClient.AppendKnownHost(ctx, connect.NewRequest(&rpcv1.AppendKnownHostRequest{
+		AgentName: agentName,
+		PublicKey: pubKey,
+	}))
+	if err != nil {
+		return fmt.Errorf("调用 AppendKnownHost RPC 失败: %w", err)
+	}
+	log.Info().Str("agent", agentName).Msg("公钥已添加到 Agent")
+	return nil
 }
 
 // GetOrCreateForward 获取或创建到指定 Agent 远程端口的本地转发。
