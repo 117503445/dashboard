@@ -75,6 +75,20 @@ func (w *responseWriter) WriteHeader(statusCode int) {
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
+func (w *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("底层 ResponseWriter 不支持 Hijacker")
+	}
+	return hijacker.Hijack()
+}
+
+func (w *responseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func NewCtxInterceptor() connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(
@@ -305,6 +319,13 @@ func (s *Server) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 			req.URL.RawQuery = target.RawQuery
 			req.Host = target.Host
 		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			log.Ctx(r.Context()).Error().Err(err).
+				Str("method", r.Method).
+				Str("path", r.URL.Path).
+				Msg("反向代理错误")
+			http.Error(w, fmt.Sprintf("代理错误：%v", err), http.StatusInternalServerError)
+		},
 	}
 	proxy.ServeHTTP(w, r)
 }
@@ -318,6 +339,8 @@ func isWebSocketUpgrade(r *http.Request) bool {
 // 需要显式处理 upgrade 而非依赖 httputil.ReverseProxy，
 // 因为必须改写 Origin 头以通过 code-server 的跨域检查。
 func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *http.Request, targetHost, path, rawQuery string) {
+	log.Ctx(ctx).Info().Str("targetHost", targetHost).Str("path", path).Msg("开始处理 WebSocket 代理")
+
 	backendConn, err := net.DialTimeout("tcp", targetHost, 10*time.Second)
 	if err != nil {
 		log.Ctx(ctx).Error().Err(err).Str("target", targetHost).Msg("WebSocket 后端连接失败")
@@ -330,6 +353,12 @@ func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *h
 	outReq.Host = targetHost
 	outReq.RequestURI = ""
 	outReq.Header.Set("Origin", "http://"+targetHost)
+
+	log.Ctx(ctx).Debug().
+		Str("method", outReq.Method).
+		Str("path", outReq.URL.Path).
+		Interface("headers", outReq.Header).
+		Msg("发送 WebSocket 升级请求到后端")
 
 	if err := outReq.Write(backendConn); err != nil {
 		backendConn.Close()
@@ -356,6 +385,8 @@ func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *h
 		return
 	}
 
+	log.Ctx(ctx).Debug().Int("status", resp.StatusCode).Msg("WebSocket 升级成功，开始 hijack")
+
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		resp.Body.Close()
@@ -364,7 +395,7 @@ func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *h
 		return
 	}
 
-	clientConn, clientBuf, err := hijacker.Hijack()
+	rawConn, readWriter, err := hijacker.Hijack()
 	if err != nil {
 		resp.Body.Close()
 		backendConn.Close()
@@ -373,32 +404,85 @@ func (s *Server) proxyWebSocket(ctx context.Context, w http.ResponseWriter, r *h
 	}
 
 	// 写入响应头到客户端
-	resp.Write(clientBuf)
-	clientBuf.Flush()
-
-	// 将 bufio.Reader 中已缓冲的数据写入客户端（可能包含 WebSocket 帧）
-	if br.Buffered() > 0 {
-		buffered := make([]byte, br.Buffered())
-		_, _ = br.Read(buffered)
-		clientConn.Write(buffered)
+	if err := resp.Write(readWriter); err != nil {
+		log.Ctx(ctx).Error().Err(err).Msg("WebSocket 写入响应头失败")
+		rawConn.Close()
+		backendConn.Close()
+		return
 	}
 
+	// 刷新缓冲（发送响应头）
+	if err := readWriter.Flush(); err != nil {
+		log.Ctx(ctx).Error().Err(err).Msg("WebSocket 刷新缓冲失败")
+		rawConn.Close()
+		backendConn.Close()
+		return
+	}
+
+	// 将 backend bufio.Reader 中已缓冲的数据（可能包含 WebSocket 帧）写入客户端
+	if br.Buffered() > 0 {
+		buffered := make([]byte, br.Buffered())
+		n, _ := br.Read(buffered)
+		log.Ctx(ctx).Debug().Int("bytes", n).Msg("从 backend bufio.Reader 读取缓冲数据")
+		if n > 0 {
+			if _, err := rawConn.Write(buffered[:n]); err != nil {
+				log.Ctx(ctx).Error().Err(err).Msg("WebSocket 写入缓冲数据失败")
+				rawConn.Close()
+				backendConn.Close()
+				return
+			}
+		}
+	}
+
+	log.Ctx(ctx).Info().
+		Str("targetHost", targetHost).
+		Msg("开始 WebSocket 双向数据转发")
+
 	// 使用原始连接进行双向数据复制
-	errc := make(chan error, 2)
+	// 当一个方向的 io.Copy 结束时，我们需要关闭另一端的写入方向
+	// 这样才能正确传递 EOF 信号，让另一端也正常关闭
+	done := make(chan struct{}, 2)
+	var clientTCP, backendTCP *net.TCPConn
+	var isClientTCP, isBackendTCP bool
+	if clientTCP, isClientTCP = rawConn.(*net.TCPConn); !isClientTCP {
+		clientTCP = nil
+	}
+	if backendTCP, isBackendTCP = backendConn.(*net.TCPConn); !isBackendTCP {
+		backendTCP = nil
+	}
+
 	go func() {
-		_, err := io.Copy(backendConn, clientConn)
-		errc <- err
+		defer func() { done <- struct{}{} }()
+		n, err := io.Copy(rawConn, backendConn) // backend -> client
+		log.Ctx(ctx).Info().Err(err).Int64("bytes", n).Msg("WebSocket backend->client io.Copy 完成")
+		// backend 发送完毕，关闭 client 的写入方向
+		if clientTCP != nil {
+			clientTCP.CloseWrite()
+		} else {
+			rawConn.Close()
+		}
 	}()
 	go func() {
-		_, err := io.Copy(clientConn, backendConn)
-		errc <- err
+		defer func() { done <- struct{}{} }()
+		n, err := io.Copy(backendConn, rawConn) // client -> backend
+		log.Ctx(ctx).Info().Err(err).Int64("bytes", n).Msg("WebSocket client->backend io.Copy 完成")
+		// client 发送完毕，关闭 backend 的写入方向
+		if backendTCP != nil {
+			backendTCP.CloseWrite()
+		} else {
+			backendConn.Close()
+		}
 	}()
 
-	// 等待一个方向结束，然后关闭连接
-	<-errc
-	clientConn.Close()
+	// 等待两个方向都完成
+	<-done
+	<-done
+	log.Ctx(ctx).Debug().Msg("WebSocket 双向转发完成")
+
+	// 关闭连接
+	rawConn.Close()
 	backendConn.Close()
-	<-errc
+	log.Ctx(ctx).Info().Str("targetHost", targetHost).Msg("WebSocket 连接关闭")
 }
 
 func (s *Server) getAgents(ctx context.Context) ([]*rpc.AgentInfo, error) {

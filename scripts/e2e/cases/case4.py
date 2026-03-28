@@ -47,6 +47,11 @@ AGENT_SSH_PORT = 22224
 AUTH_TOKEN = "e2e-test-token-case4"
 AGENT_NAME = "e2e-agent-cs"
 CODE_SERVER_PORT = 44444
+WORKBENCH_ERROR_PATTERNS = [
+    "An unexpected error occurred that requires a reload of this page.",
+    "The workbench failed to connect to the server",
+    "WebSocket close with status code 1006",
+]
 
 
 def is_port_free(port: int) -> bool:
@@ -85,6 +90,10 @@ def wait_for_port(port: int, timeout: int = 30) -> bool:
             pass
         time.sleep(0.5)
     return False
+
+
+def contains_workbench_error(text: str) -> bool:
+    return any(pattern in text for pattern in WORKBENCH_ERROR_PATTERNS)
 
 
 def run_test(
@@ -221,6 +230,68 @@ def run_test(
                     if not page:
                         return False
 
+                    console_errors: list[str] = []
+                    page_errors: list[str] = []
+                    websocket_events: list[str] = []
+
+                    def record_console(msg):
+                        text = msg.text
+                        logger.info(f"浏览器控制台[{msg.type}] {text}")
+                        if contains_workbench_error(text):
+                            console_errors.append(text)
+
+                    def record_page_error(exc):
+                        text = str(exc)
+                        logger.error(f"页面异常: {text}")
+                        if contains_workbench_error(text):
+                            page_errors.append(text)
+
+                    def record_websocket(ws):
+                        ws_url = ws.url
+                        logger.info(f"检测到 WebSocket: {ws_url}")
+
+                        def on_close():
+                            message = f"WebSocket 已关闭: {ws_url}"
+                            logger.warning(message)
+                            websocket_events.append(message)
+
+                        def on_socket_error(err):
+                            text = f"WebSocket 异常 {ws_url}: {err}"
+                            logger.error(text)
+                            if contains_workbench_error(text):
+                                websocket_events.append(text)
+
+                        ws.on("close", on_close)
+                        ws.on("socketerror", on_socket_error)
+
+                    def fail_if_workbench_error(stage: str) -> bool:
+                        if console_errors or page_errors:
+                            logger.error(f"{stage} 期间检测到 workbench 断连错误")
+                            for item in console_errors:
+                                logger.error(f"控制台错误: {item}")
+                            for item in page_errors:
+                                logger.error(f"页面错误: {item}")
+                            ctx.screenshot(f"error-workbench-{stage}")
+                            return True
+
+                        try:
+                            iframe = page.frame_locator("iframe")
+                            body = iframe.locator("body")
+                            body.wait_for(timeout=3000)
+                            body_text = body.inner_text(timeout=3000)
+                            if contains_workbench_error(body_text):
+                                logger.error(f"{stage} 期间 iframe 出现 workbench 错误: {body_text[:500]}")
+                                ctx.screenshot(f"error-workbench-{stage}")
+                                return True
+                        except Exception:
+                            pass
+
+                        return False
+
+                    page.on("console", record_console)
+                    page.on("pageerror", record_page_error)
+                    page.on("websocket", record_websocket)
+
                     # 7a. 加载 Dashboard
                     ctx.goto("/")
                     ctx.screenshot("01-initial-load")
@@ -275,6 +346,9 @@ def run_test(
 
                     # 7h. 等待 VS Code 在 iframe 中加载
                     time.sleep(5)
+                    if fail_if_workbench_error("before-vscode-ready"):
+                        return False
+
                     vscode_loaded = False
                     try:
                         iframe = page.frame_locator("iframe")
@@ -292,6 +366,13 @@ def run_test(
                                 logger.info(f"iframe 已加载内容 (长度: {len(body_text)})")
                         except Exception:
                             pass
+
+                    if fail_if_workbench_error("after-vscode-load"):
+                        return False
+
+                    time.sleep(5)
+                    if fail_if_workbench_error("stability-check"):
+                        return False
 
                     ctx.screenshot("08-vscode-loaded")
 
