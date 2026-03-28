@@ -35,6 +35,7 @@ import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+from urllib.request import urlopen
 
 from playwright.sync_api import sync_playwright
 
@@ -112,10 +113,12 @@ class AgentServiceHandler(BaseHTTPRequestHandler):
   </div>
 </body>
 </html>"""
+        body = html.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(html.encode())
+        self.wfile.write(body)
 
 
 def run_test(
@@ -203,7 +206,7 @@ def run_test(
 
         # ── 4. 启动 Dashboard 后端（含 SSH 转发）────────────────
         env = os.environ.copy()
-        env["PORT"] = str(DASHBOARD_PORT)
+        env["DASHBOARD_PORT"] = str(DASHBOARD_PORT)
         env["DASHBOARD_SSHOLE_HUB_URL"] = f"http://localhost:{HUB_PORT}"
         env["DASHBOARD_SSHOLE_HUB_TOKEN"] = AUTH_TOKEN
         env["DASHBOARD_SSH_USER"] = "root"
@@ -255,7 +258,7 @@ def run_test(
                     # 5a. 加载 Dashboard
                     ctx.goto("/")
                     ctx.screenshot("01-initial-load")
-                    ctx.wait_for_selector("text=Dashboard", timeout=15000)
+                    ctx.wait_for_selector("#app-root", timeout=15000)
                     ctx.screenshot("02-dashboard-loaded")
 
                     # 5b. 等待 Agent 列表加载（Hub API 轮询间隔）
@@ -263,7 +266,7 @@ def run_test(
                     ctx.screenshot("03-agent-list")
 
                     # 5c. 验证 Agent 已从真实 Hub 发现
-                    agent_el = page.locator(f"text={AGENT_NAME}")
+                    agent_el = page.locator(f"#agent-item-{AGENT_NAME}")
                     if agent_el.count() == 0:
                         logger.error(f"Agent '{AGENT_NAME}' 不在列表中")
                         ctx.screenshot("error-no-agent")
@@ -276,17 +279,17 @@ def run_test(
                     ctx.screenshot("04-agent-selected")
 
                     # 5e. 添加端口标签页
-                    page.locator("button:has-text('+')").first.click()
+                    page.locator("#iframe-tab-add").first.click()
                     time.sleep(0.5)
-                    page.locator("input[placeholder*='Port']").first.fill(
+                    page.locator("#add-port-input").first.fill(
                         str(SERVICE_PORT)
                     )
                     ctx.screenshot("05-port-entered")
 
-                    page.locator("button:has-text('Add')").first.click()
+                    page.locator("#add-port-confirm").first.click()
                     time.sleep(1)
 
-                    tab = page.locator(f"text=:{SERVICE_PORT}")
+                    tab = page.locator(f"#iframe-tab-{SERVICE_PORT}")
                     if tab.count() == 0:
                         logger.error(f"标签页 :{SERVICE_PORT} 未创建")
                         ctx.screenshot("error-no-tab")
@@ -298,7 +301,7 @@ def run_test(
                     logger.info("等待 iframe 通过 SSH 隧道加载...")
                     iframe_ok = False
                     try:
-                        iframe = page.frame_locator("iframe")
+                        iframe = page.frame_locator(f"#agent-iframe-{SERVICE_PORT}")
                         iframe.locator("#forwarded-title").wait_for(timeout=30000)
                         iframe_ok = True
                         logger.info("Iframe 显示转发的服务内容！")
@@ -312,13 +315,20 @@ def run_test(
                         f"http://localhost:{DASHBOARD_PORT}"
                         f"/proxy/agents/{AGENT_NAME}/ports/{SERVICE_PORT}/"
                     )
-                    resp = page.request.get(proxy_url)
-                    if not resp.ok:
-                        logger.error(f"代理 HTTP 请求失败: {resp.status}")
+                    try:
+                        with urlopen(proxy_url, timeout=30) as resp:
+                            status = resp.status
+                            body = resp.read().decode("utf-8", errors="replace")
+                    except Exception as e:
+                        logger.error(f"代理 HTTP 请求失败: {e}")
                         ctx.screenshot("error-proxy-http")
                         return False
 
-                    body = resp.text()
+                    if status < 200 or status >= 300:
+                        logger.error(f"代理 HTTP 请求失败: {status}")
+                        ctx.screenshot("error-proxy-http")
+                        return False
+
                     if (
                         "Forwarded Service" not in body
                         or "SSH tunnel forwarding" not in body

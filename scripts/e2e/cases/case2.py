@@ -167,7 +167,7 @@ def run_test(
                     ctx.screenshot("step1-initial-load")
 
                     # 步骤 2: 等待页面加载
-                    ctx.wait_for_selector("text=Dashboard", timeout=15000)
+                    ctx.wait_for_selector("#app-root", timeout=15000)
                     ctx.screenshot("step2-dashboard-visible")
 
                     # 步骤 3: 验证 Agent 列表显示
@@ -176,7 +176,7 @@ def run_test(
                         return False
 
                     # 检查 Agents 标题
-                    agents_header = page.locator("text=Agents")
+                    agents_header = page.locator("#agents-sidebar-title")
                     if agents_header.count() == 0:
                         logger.error("未找到 Agents 标题")
                         return False
@@ -186,9 +186,9 @@ def run_test(
                     ctx.screenshot("step3-agent-list")
 
                     # 步骤 4: 检查 Agent 项目
-                    agent_1 = page.locator("text=agent-1")
-                    agent_2 = page.locator("text=agent-2")
-                    agent_3 = page.locator("text=agent-3")
+                    agent_1 = page.locator("#agent-item-agent-1")
+                    agent_2 = page.locator("#agent-item-agent-2")
+                    agent_3 = page.locator("#agent-item-agent-3")
 
                     if agent_1.count() == 0:
                         logger.error("列表中未找到 agent-1")
@@ -209,7 +209,7 @@ def run_test(
                     ctx.screenshot("step5-agent-1-selected")
 
                     # 步骤 6: 点击 + 按钮添加端口
-                    plus_button = page.locator("button:has-text('+')")
+                    plus_button = page.locator("#iframe-tab-add")
                     if plus_button.count() == 0:
                         logger.error("未找到 + 按钮")
                         return False
@@ -219,7 +219,7 @@ def run_test(
                     ctx.screenshot("step6-add-port-input")
 
                     # 步骤 7: 输入端口号
-                    port_input = page.locator("input[placeholder*='Port']")
+                    port_input = page.locator("#add-port-input")
                     if port_input.count() == 0:
                         logger.error("未找到端口输入框")
                         return False
@@ -228,7 +228,7 @@ def run_test(
                     ctx.screenshot("step7-port-entered")
 
                     # 步骤 8: 点击 Add 按钮
-                    add_button = page.locator("button:has-text('Add')")
+                    add_button = page.locator("#add-port-confirm")
                     if add_button.count() == 0:
                         logger.error("未找到 Add 按钮")
                         return False
@@ -238,7 +238,7 @@ def run_test(
                     ctx.screenshot("step8-tab-created")
 
                     # 步骤 9: 验证端口标签页已创建
-                    port_tab = page.locator("text=:3000")
+                    port_tab = page.locator("#iframe-tab-3000")
                     if port_tab.count() == 0:
                         logger.error("未找到端口标签页 :3000")
                         return False

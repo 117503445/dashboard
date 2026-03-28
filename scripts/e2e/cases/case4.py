@@ -275,7 +275,7 @@ def run_test(
                             return True
 
                         try:
-                            iframe = page.frame_locator("iframe")
+                            iframe = page.frame_locator(f"#agent-iframe-{CODE_SERVER_PORT}")
                             body = iframe.locator("body")
                             body.wait_for(timeout=3000)
                             body_text = body.inner_text(timeout=3000)
@@ -295,7 +295,7 @@ def run_test(
                     # 7a. 加载 Dashboard
                     ctx.goto("/")
                     ctx.screenshot("01-initial-load")
-                    ctx.wait_for_selector("text=Dashboard", timeout=15000)
+                    ctx.wait_for_selector("#app-root", timeout=15000)
                     ctx.screenshot("02-dashboard-loaded")
 
                     # 7b. 等待 Agent 列表加载
@@ -303,7 +303,7 @@ def run_test(
                     ctx.screenshot("03-agent-list")
 
                     # 7c. 验证 Agent 已发现
-                    agent_el = page.locator(f"text={AGENT_NAME}")
+                    agent_el = page.locator(f"#agent-item-{AGENT_NAME}")
                     if agent_el.count() == 0:
                         logger.error(f"Agent '{AGENT_NAME}' 不在列表中")
                         ctx.screenshot("error-no-agent")
@@ -316,7 +316,7 @@ def run_test(
                     ctx.screenshot("04-agent-selected")
 
                     # 7e. 点击 Code Server 按钮
-                    code_server_btn = page.locator("button:has-text('Code Server')")
+                    code_server_btn = page.locator("#setup-code-server-button")
                     if code_server_btn.count() == 0:
                         logger.error("未找到 Code Server 按钮")
                         return False
@@ -330,7 +330,7 @@ def run_test(
                     ctx.screenshot("06-code-server-loading")
 
                     # 7g. 等待 :44444 标签页出现
-                    tab_locator = page.locator(f"text=:{CODE_SERVER_PORT}")
+                    tab_locator = page.locator(f"#iframe-tab-{CODE_SERVER_PORT}")
                     try:
                         tab_locator.wait_for(timeout=300000)
                         logger.info(f":{CODE_SERVER_PORT} 标签页已创建")
@@ -351,14 +351,14 @@ def run_test(
 
                     vscode_loaded = False
                     try:
-                        iframe = page.frame_locator("iframe")
+                        iframe = page.frame_locator(f"#agent-iframe-{CODE_SERVER_PORT}")
                         iframe.locator(".monaco-workbench").wait_for(timeout=60000)
                         vscode_loaded = True
                         logger.info("VS Code 界面加载成功")
                     except Exception as e:
                         logger.warning(f"VS Code 元素检查超时: {e}")
                         try:
-                            iframe = page.frame_locator("iframe")
+                            iframe = page.frame_locator(f"#agent-iframe-{CODE_SERVER_PORT}")
                             iframe.locator("body").wait_for(timeout=10000)
                             body_text = iframe.locator("body").inner_text()
                             if body_text:

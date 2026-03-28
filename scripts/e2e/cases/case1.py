@@ -96,7 +96,7 @@ def run_test(
                     ctx.screenshot("step1-initial-load")
 
                     # 步骤 2: 等待页面加载
-                    ctx.wait_for_selector("text=Dashboard")
+                    ctx.wait_for_selector("#app-root")
                     ctx.screenshot("step2-dashboard-visible")
 
                     # 步骤 3: 等待 Agent 列表加载
@@ -109,19 +109,19 @@ def run_test(
                         return False
 
                     # 检查 Dashboard 标题
-                    title = page.locator("text=Dashboard")
+                    title = page.locator("#app-root")
                     if title.count() == 0:
-                        logger.error("未找到 Dashboard 标题")
+                        logger.error("未找到应用根节点")
                         return False
 
                     # 检查 Agents 标题
-                    agents_header = page.locator("text=Agents")
+                    agents_header = page.locator("#agents-sidebar-title")
                     if agents_header.count() == 0:
                         logger.error("未找到 Agents 标题")
                         return False
 
                     # 检查 "Select an Agent" 提示
-                    select_prompt = page.locator("text=Select an Agent")
+                    select_prompt = page.locator("#agent-empty-title")
                     if select_prompt.count() == 0:
                         logger.warning("未找到 Select an Agent 提示")
 
