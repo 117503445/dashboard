@@ -38,11 +38,13 @@ func main() {
 	// 读取 sshole-hub 配置
 	hubURL := os.Getenv("DASHBOARD_SSHOLE_HUB_URL")
 	hubToken := os.Getenv("DASHBOARD_SSHOLE_HUB_TOKEN")
+	sshUser := os.Getenv("DASHBOARD_SSH_USER")
 	mockAgents := os.Getenv("DASHBOARD_MOCK_AGENTS")
 
 	config := Config{
 		HubURL:     hubURL,
 		HubToken:   hubToken,
+		SSHUser:    sshUser,
 		MockAgents: mockAgents,
 	}
 

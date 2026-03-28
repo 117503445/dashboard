@@ -20,10 +20,11 @@ func ListenAndServe(ctx context.Context, port string, config Config) error {
 		if err != nil {
 			log.Ctx(ctx).Err(err).Msg("SSH 密钥初始化失败，SSH 转发已禁用")
 		} else {
-			forwardManager = NewForwardManager(ctx, config.HubURL, config.HubToken, sshKeyPair)
+			forwardManager = NewForwardManagerWithUser(ctx, config.HubURL, config.HubToken, config.SSHUser, sshKeyPair)
 			defer forwardManager.Close()
 			log.Ctx(ctx).Info().
 				Str("hubURL", config.HubURL).
+				Str("sshUser", forwardManager.sshConfig.User).
 				Str("privateKey", sshKeyPair.KeyPath).
 				Msg("SSH 转发已启用")
 		}

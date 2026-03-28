@@ -33,21 +33,67 @@ tasks:
       SSHOLE_AGENT_NAME: '{{default "test-agent" .SSHOLE_AGENT_NAME}}'
       LOG_DIR: '{{.PWD}}/data/runs/{{now | date "2006-01-02_15-04-05"}}'
     cmds:
-      # 创建日志目录
-      - mkdir -p {{.LOG_DIR}}
-      # 关闭之前的进程
-      - pkill -f "sshole_hub" || true
-      - pkill -f "sshole_agent" || true
-      - pkill -f "./data/dashboard/dashboard" || true
-      - sleep 1
-      # 后台启动 sshole hub
-      - ./data/bin/sshole_hub --auth-token "{{.SSHOLE_AUTH_TOKEN}}" --http-addr ":{{.SSHOLE_HUB_PORT}}" > {{.LOG_DIR}}/sshole_hub.log 2>&1 &
-      - sleep 1
-      # 后台启动 sshole agent
-      - ./data/bin/sshole_agent --hub-server "http://localhost:{{.SSHOLE_HUB_PORT}}" --auth "{{.SSHOLE_AUTH_TOKEN}}" --name "{{.SSHOLE_AGENT_NAME}}" > {{.LOG_DIR}}/sshole_agent.log 2>&1 &
-      - sleep 1
-      # 后台启动 dashboard
-      - DASHBOARD_SSHOLE_HUB_URL="http://localhost:{{.SSHOLE_HUB_PORT}}" DASHBOARD_SSHOLE_HUB_TOKEN="{{.SSHOLE_AUTH_TOKEN}}" ./data/dashboard/dashboard > {{.LOG_DIR}}/dashboard.log 2>&1 &
-      - sleep 2
-      - echo "Dashboard running at http://localhost:8080"
-      - echo "Logs saved to {{.LOG_DIR}}"
+      - |
+        bash <<'EOF'
+        set -eu
+
+        mkdir -p {{.LOG_DIR}}
+
+        pkill -f "sshole_hub" || true
+        pkill -f "sshole_agent" || true
+        pkill -f "./data/dashboard/dashboard" || true
+        sleep 1
+
+        hub_pid=""
+        agent_pid=""
+        dashboard_pid=""
+        shutting_down="0"
+
+        cleanup() {
+          if [ "$shutting_down" = "1" ]; then
+            return
+          fi
+          shutting_down="1"
+
+          echo "正在停止开发环境..."
+
+          for pid in "$dashboard_pid" "$agent_pid" "$hub_pid"; do
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+              kill "$pid" 2>/dev/null || true
+            fi
+          done
+
+          wait "$dashboard_pid" 2>/dev/null || true
+          wait "$agent_pid" 2>/dev/null || true
+          wait "$hub_pid" 2>/dev/null || true
+        }
+
+        trap 'cleanup; exit 130' INT TERM
+        trap 'cleanup' EXIT
+
+        ./data/bin/sshole_hub --auth-token "{{.SSHOLE_AUTH_TOKEN}}" --http-addr ":{{.SSHOLE_HUB_PORT}}" > {{.LOG_DIR}}/sshole_hub.log 2>&1 &
+        hub_pid=$!
+        sleep 1
+
+        ./data/bin/sshole_agent --hub-server "http://localhost:{{.SSHOLE_HUB_PORT}}" --auth "{{.SSHOLE_AUTH_TOKEN}}" --name "{{.SSHOLE_AGENT_NAME}}" > {{.LOG_DIR}}/sshole_agent.log 2>&1 &
+        agent_pid=$!
+        sleep 1
+
+        DASHBOARD_SSHOLE_HUB_URL="http://localhost:{{.SSHOLE_HUB_PORT}}" DASHBOARD_SSHOLE_HUB_TOKEN="{{.SSHOLE_AUTH_TOKEN}}" ./data/dashboard/dashboard > {{.LOG_DIR}}/dashboard.log 2>&1 &
+        dashboard_pid=$!
+        sleep 2
+
+        echo "Dashboard running at http://localhost:8080"
+        echo "Logs saved to {{.LOG_DIR}}"
+        echo "按 Ctrl+C 将停止全部进程"
+
+        while true; do
+          for pid in "$hub_pid" "$agent_pid" "$dashboard_pid"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "检测到子进程已退出，正在停止其余进程..."
+              exit 1
+            fi
+          done
+          sleep 1
+        done
+        EOF

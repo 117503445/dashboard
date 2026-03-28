@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os/user"
 	"strings"
 	"sync"
 	"time"
@@ -90,11 +91,24 @@ type ForwardManager struct {
 }
 
 func NewForwardManager(ctx context.Context, hubURL, hubToken string, sshKeyPair *SSHKeyPair) *ForwardManager {
+	return NewForwardManagerWithUser(ctx, hubURL, hubToken, "", sshKeyPair)
+}
+
+func NewForwardManagerWithUser(ctx context.Context, hubURL, hubToken, sshUser string, sshKeyPair *SSHKeyPair) *ForwardManager {
 	ctx, cancel := context.WithCancel(ctx)
+
+	if sshUser == "" {
+		currentUser, err := user.Current()
+		if err == nil && currentUser.Username != "" {
+			sshUser = currentUser.Username
+		} else {
+			sshUser = "root"
+		}
+	}
 
 	// 创建 SSH 配置，使用公钥认证
 	sshConfig := &ssh.ClientConfig{
-		User:            "root",
+		User:            sshUser,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshKeyPair.Signer)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
@@ -357,6 +371,12 @@ func (fm *ForwardManager) handleConn(_ context.Context, fwd *ForwardInstance, lo
 	defer localConn.Close()
 	fwd.touch()
 
+	log.Info().
+		Str("agent", fwd.AgentName).
+		Int("localPort", fwd.LocalPort).
+		Int("remotePort", fwd.RemotePort).
+		Msg("开始处理转发连接")
+
 	remoteAddr := fmt.Sprintf("localhost:%d", fwd.RemotePort)
 	remoteConn, err := fwd.sshClient.Dial("tcp", remoteAddr)
 	if err != nil {
@@ -368,17 +388,32 @@ func (fm *ForwardManager) handleConn(_ context.Context, fwd *ForwardInstance, lo
 	}
 	defer remoteConn.Close()
 
-	done := make(chan struct{}, 2)
+	log.Info().
+		Str("agent", fwd.AgentName).
+		Int("localPort", fwd.LocalPort).
+		Int("remotePort", fwd.RemotePort).
+		Msg("SSH 远程连接已建立，开始双向转发")
+
+	done := make(chan error, 2)
 	go func() {
-		io.Copy(remoteConn, localConn)
-		done <- struct{}{}
+		n, err := io.Copy(remoteConn, localConn)
+		log.Info().Err(err).Int64("bytes", n).
+			Str("agent", fwd.AgentName).
+			Msg("local -> remote io.Copy 完成")
+		done <- err
 	}()
 	go func() {
-		io.Copy(localConn, remoteConn)
-		done <- struct{}{}
+		n, err := io.Copy(localConn, remoteConn)
+		log.Info().Err(err).Int64("bytes", n).
+			Str("agent", fwd.AgentName).
+			Msg("remote -> local io.Copy 完成")
+		done <- err
 	}()
 
+	// 等待两个方向都完成
 	<-done
+	<-done
+	log.Info().Str("agent", fwd.AgentName).Msg("转发连接关闭")
 }
 
 func (fm *ForwardManager) cleanupLoop() {
