@@ -6,18 +6,24 @@ import { AgentPanel } from '@/components/AgentPanel'
 
 function App() {
   const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null)
+  const [isAgentPanelFullscreen, setIsAgentPanelFullscreen] = useState(false)
 
   return (
     <div id="app-root" className="min-h-screen">
       {/* Main content */}
       <div
         id="app-layout"
-        className="flex min-h-screen gap-4 overflow-hidden p-4 lg:p-5"
+        className={`flex min-h-screen overflow-hidden ${
+          isAgentPanelFullscreen ? 'gap-0 p-0' : 'gap-4 p-4 lg:p-5'
+        }`}
       >
         {/* Sidebar - Agent List */}
         <aside
           id="agents-sidebar"
-          className="flex w-80 shrink-0 flex-col overflow-hidden rounded-[32px] border border-white/70 bg-white/72 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-xl"
+          className={`flex w-80 shrink-0 flex-col overflow-hidden rounded-[32px] border border-white/70 bg-white/72 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-xl ${
+            isAgentPanelFullscreen ? 'hidden' : ''
+          }`}
+          style={isAgentPanelFullscreen ? { display: 'none' } : undefined}
         >
           <div
             id="agents-sidebar-header"
@@ -48,10 +54,34 @@ function App() {
         {/* Main panel */}
         <main
           id="agent-main-panel"
-          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[36px] border border-white/60 bg-white/72 shadow-[0_32px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl"
+          className={`flex min-w-0 flex-1 flex-col overflow-hidden bg-white/72 ${
+            isAgentPanelFullscreen
+              ? 'fixed inset-0 z-40 min-h-screen w-screen rounded-none border-0 shadow-none backdrop-blur-none'
+              : 'rounded-[36px] border border-white/60 shadow-[0_32px_90px_rgba(15,23,42,0.10)] backdrop-blur-xl'
+          }`}
+          style={
+            isAgentPanelFullscreen
+              ? {
+                  position: 'fixed',
+                  inset: '0',
+                  zIndex: 40,
+                  width: '100vw',
+                  height: '100vh',
+                  minHeight: '100vh',
+                  border: '0',
+                  borderRadius: '0',
+                  boxShadow: 'none',
+                  backdropFilter: 'none',
+                }
+              : undefined
+          }
         >
           {selectedAgent ? (
-            <AgentPanel agent={selectedAgent} />
+            <AgentPanel
+              agent={selectedAgent}
+              isFullscreen={isAgentPanelFullscreen}
+              onFullscreenChange={setIsAgentPanelFullscreen}
+            />
           ) : (
             <div
               id="agent-empty-state"

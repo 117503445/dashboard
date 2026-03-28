@@ -6,11 +6,13 @@ import { Plus, Monitor, AlertCircle, Loader2, Code, Maximize2, Minimize2, X } fr
 
 interface AgentPanelProps {
   agent: AgentInfo
+  isFullscreen: boolean
+  onFullscreenChange: (value: boolean) => void
 }
 
 const CODE_SERVER_PORT = 44444
 
-export function AgentPanel({ agent }: AgentPanelProps) {
+export function AgentPanel({ agent, isFullscreen, onFullscreenChange }: AgentPanelProps) {
   const [tabs, setTabs] = useState<TabInfo[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [newPort, setNewPort] = useState('')
@@ -18,16 +20,15 @@ export function AgentPanel({ agent }: AgentPanelProps) {
   const [iframeError, setIframeError] = useState<string | null>(null)
   const [codeServerLoading, setCodeServerLoading] = useState(false)
   const [codeServerError, setCodeServerError] = useState<string | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
     if (!isFullscreen) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsFullscreen(false)
+      if (e.key === 'Escape') onFullscreenChange(false)
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isFullscreen])
+  }, [isFullscreen, onFullscreenChange])
 
   const addTab = (port: number) => {
     const existing = tabs.find((t) => t.port === port)
@@ -118,7 +119,7 @@ export function AgentPanel({ agent }: AgentPanelProps) {
           fullscreenMode ? (
             <button
               id="close-fullscreen-button"
-              onClick={() => setIsFullscreen(false)}
+              onClick={() => onFullscreenChange(false)}
               className="rounded-2xl border border-slate-200 bg-white px-4 text-slate-500 shadow-[0_12px_28px_rgba(15,23,42,0.06)] transition-all hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-700"
               title="退出全屏 (Esc)"
             >
@@ -127,7 +128,7 @@ export function AgentPanel({ agent }: AgentPanelProps) {
           ) : (
             <button
               id="open-fullscreen-button"
-              onClick={() => setIsFullscreen(true)}
+              onClick={() => onFullscreenChange(true)}
               className="rounded-2xl border border-slate-200 bg-white px-4 text-slate-500 shadow-[0_12px_28px_rgba(15,23,42,0.06)] transition-all hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-700"
               title="全屏 (Esc 退出)"
             >
@@ -161,9 +162,23 @@ export function AgentPanel({ agent }: AgentPanelProps) {
   return (
     <div
       id={`agent-panel-${agent.agentName}`}
-      className="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,_rgba(255,255,255,0.50),_rgba(248,250,252,0.88))]"
+      className={`flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,_rgba(255,255,255,0.50),_rgba(248,250,252,0.88))] ${
+        isFullscreen ? 'relative z-50 bg-[linear-gradient(180deg,_rgba(250,252,251,0.98),_rgba(244,247,245,0.96))] backdrop-blur-sm' : ''
+      }`}
+      style={
+        isFullscreen
+          ? {
+              position: 'fixed',
+              inset: '0',
+              zIndex: 50,
+              width: '100vw',
+              height: '100vh',
+              minHeight: '100vh',
+            }
+          : undefined
+      }
     >
-      {renderToolbar()}
+      {renderToolbar(isFullscreen)}
 
       {/* Code server error banner */}
       {codeServerError && (
@@ -272,19 +287,7 @@ export function AgentPanel({ agent }: AgentPanelProps) {
           </div>
         )}
       </div>
-
-      {/* Fullscreen overlay */}
-      {isFullscreen && activeTab && (
-        <div id="fullscreen-overlay" className="fixed inset-0 z-50 flex flex-col bg-[linear-gradient(180deg,_rgba(250,252,251,0.98),_rgba(244,247,245,0.96))] backdrop-blur-sm">
-          {renderToolbar(true)}
-          <iframe
-            id={`fullscreen-iframe-${activeTab.port}`}
-            src={activeTab.url}
-            className="flex-1 w-full border-0 bg-white"
-            title={`Port ${activeTab.port} (fullscreen)`}
-          />
-        </div>
-      )}
+      {isFullscreen && <div id="fullscreen-overlay" className="pointer-events-none absolute inset-0 z-40 hidden" />}
     </div>
   )
 }
