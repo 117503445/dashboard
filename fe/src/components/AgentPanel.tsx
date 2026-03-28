@@ -8,6 +8,8 @@ interface AgentPanelProps {
   agent: AgentInfo
 }
 
+const CODE_SERVER_PORT = 44444
+
 export function AgentPanel({ agent }: AgentPanelProps) {
   const [tabs, setTabs] = useState<TabInfo[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
@@ -59,6 +61,9 @@ export function AgentPanel({ agent }: AgentPanelProps) {
   }
 
   const handleSetupCodeServer = async () => {
+    if (tabs.some((tab) => tab.port === CODE_SERVER_PORT)) {
+      return
+    }
     setCodeServerLoading(true)
     setCodeServerError(null)
     try {
@@ -77,6 +82,7 @@ export function AgentPanel({ agent }: AgentPanelProps) {
   }
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
+  const hasCodeServerTab = tabs.some((tab) => tab.port === CODE_SERVER_PORT)
 
   if (!agent.online) {
     return (
@@ -136,9 +142,9 @@ export function AgentPanel({ agent }: AgentPanelProps) {
           <button
             id="setup-code-server-button"
             onClick={handleSetupCodeServer}
-            disabled={codeServerLoading}
+            disabled={codeServerLoading || hasCodeServerTab}
             className="flex items-center gap-2 rounded-2xl border border-primary-200/80 bg-white px-4 text-sm font-medium text-primary-700 shadow-[0_12px_28px_rgba(13,148,136,0.10)] transition-all hover:-translate-y-0.5 hover:bg-primary-50 disabled:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed"
-            title="启动 Code Server"
+            title={hasCodeServerTab ? '关闭 :44444 标签页后才能重新启动 Code Server' : '启动 Code Server'}
           >
             {codeServerLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
