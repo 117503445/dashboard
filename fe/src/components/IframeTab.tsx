@@ -44,7 +44,7 @@ export function IframeTab({ tabs, activeTabId, onTabClick, onTabClose, onAddTab 
                 : 'text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-white hover:text-rose-500'
             }`}
           >
-            <X className="w-3 h-3" />
+            <X id={`iframe-tab-close-icon-${tab.port}`} className="w-3 h-3" />
           </button>
           <a
             id={`iframe-tab-open-${tab.port}`}
@@ -58,7 +58,7 @@ export function IframeTab({ tabs, activeTabId, onTabClick, onTabClose, onAddTab 
                 : 'text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-white hover:text-primary-600'
             }`}
           >
-            <ExternalLink className="w-3 h-3" />
+            <ExternalLink id={`iframe-tab-open-icon-${tab.port}`} className="w-3 h-3" />
           </a>
         </div>
       ))}
@@ -68,7 +68,7 @@ export function IframeTab({ tabs, activeTabId, onTabClick, onTabClose, onAddTab 
         className="flex h-full min-w-12 items-center justify-center rounded-[18px] border border-dashed border-slate-200 bg-white/70 px-3 text-slate-500 transition-all hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
         title="Add new port"
       >
-        <span className="text-lg leading-none">+</span>
+        <span id="iframe-tab-add-label" className="text-lg leading-none">+</span>
       </button>
     </div>
   )
